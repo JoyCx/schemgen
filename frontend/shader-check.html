@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  Compiles the de-light preview shader against a real WebGL context.
+
+  A GLSL error is silent until someone switches the preview to the albedo view
+  with a model loaded, so this renders one frame with the same ShaderMaterial
+  the preview builds and reports whatever the driver says. Open
+  /shader-check.html on the dev server; "PASS" means the shader links.
+-->
+<html lang="en">
+  <head><meta charset="utf-8" /><title>De-light shader check</title></head>
+  <body style="font: 14px monospace; padding: 16px">
+    <pre id="out">running…</pre>
+    <script type="module">
+      import * as THREE from 'three'
+      import { VERTEX_SHADER, FRAGMENT_SHADER } from '/src/delightshader.js'
+
+      const out = document.getElementById('out')
+      const problems = []
+      const originalError = console.error
+      console.error = (...args) => { problems.push(args.join(' ')); originalError(...args) }
+
+      try {
+        const renderer = new THREE.WebGLRenderer({ antialias: false })
+        renderer.setSize(64, 64)
+        renderer.outputColorSpace = THREE.SRGBColorSpace
+
+        const material = new THREE.ShaderMaterial({
+          vertexShader: VERTEX_SHADER,
+          fragmentShader: FRAGMENT_SHADER,
+          uniforms: {
+            uMap: { value: null },
+            uHasMap: { value: false },
+            uBaseColor: { value: new THREE.Vector3(0.2, 0.2, 0.2) },
+            uLightDir: { value: new THREE.Vector3(0.35, 0.85, 0.4).normalize() },
+            uNormalMatrix: { value: new THREE.Matrix3() },
+            uAmbient: { value: 0.32 },
+            uGloss: { value: 0.5 },
+            uSpecular: { value: 1.1 },
+            uDelight: { value: 1 },
+            uRejection: { value: 0.75 },
+            uAlphaTest: { value: 0 },
+            uMode: { value: 0 },
+          },
+        })
+
+        const scene = new THREE.Scene()
+        const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 10)
+        camera.position.z = 3
+        scene.add(new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), material))
+
+        // Both branches of uMode compile into the same program, but render each
+        // so a driver that defers work still has to accept it.
+        renderer.render(scene, camera)
+        material.uniforms.uMode.value = 1
+        renderer.render(scene, camera)
+
+        const program = renderer.info.programs?.find((p) => p.name === 'ShaderMaterial')
+        const gl = renderer.getContext()
+        if (program?.program && !gl.getProgramParameter(program.program, gl.LINK_STATUS)) {
+          problems.push(gl.getProgramInfoLog(program.program))
+        }
+        out.textContent = problems.length
+          ? 'FAIL\n\n' + problems.join('\n\n')
+          : `PASS — shader compiled and linked (${renderer.info.render.triangles} triangles drawn)`
+      } catch (e) {
+        out.textContent = 'FAIL\n\n' + (e && e.stack ? e.stack : String(e))
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+[package]
+name = "schemgen2"
+version = "2.0.0"
+edition = "2021"
+description = "GLB to Litematica converter — Rust backend with CIEDE2000 perceptual color matching"
+license-file = "../LICENSE"
+publish = false
+
+[dependencies]
+actix-web = "4"
+actix-multipart = { version = "0.7", features = ["derive"] }
+actix-files = "0.6"
+actix-rt = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+kiddo = "5"
+rayon = "1.12.0"
+uuid = { version = "1", features = ["v4"] }
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+env_logger = "0.11"
+flate2 = "1"
+thiserror = "2"
+
+[profile.release]
+opt-level = 3
+lto = true

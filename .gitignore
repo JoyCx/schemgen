@@ -1,0 +1,27 @@
+# Rust
+/backend/target/
+
+# Node
+/frontend/node_modules/
+/frontend/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime working directories (created by `serve`)
+/backend/uploads/
+/backend/outputs/
+/uploads/
+/outputs/
+
+# Conversion output
+*.litematic
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

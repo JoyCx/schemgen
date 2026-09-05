@@ -1,0 +1,48 @@
+SchemGen2 — Personal, Non-Commercial Use License
+
+Copyright (c) 2026 JoyCx. All rights reserved.
+
+This software is source-available, not open source. Permission is granted, free
+of charge, to any individual obtaining a copy of this software and its
+associated documentation files (the "Software"), to use, copy and modify the
+Software for personal, non-commercial purposes only, subject to the conditions
+below.
+
+PERMITTED
+
+  * Running the Software, and schematics you produce with it, for your own
+    personal or hobby use.
+  * Modifying the Software for your own personal use.
+  * Non-commercial academic study, research and teaching.
+  * Sharing unmodified copies of the Software, provided this license and the
+    copyright notice are included and no fee is charged.
+
+NOT PERMITTED WITHOUT PRIOR WRITTEN PERMISSION FROM THE COPYRIGHT HOLDER
+
+  * Any commercial use. This includes use by or for a business, use in or
+    alongside a paid product or service, use in paid or commissioned work, use
+    to produce content that is monetized or sold, and use in advertising.
+  * Selling, licensing, renting or otherwise charging for the Software or any
+    part of it, or including it in anything sold or licensed for a fee.
+  * Distributing modified versions of the Software, whether or not for a fee.
+  * Removing or altering this license, the copyright notice, or any attribution
+    contained in the Software.
+
+All rights not expressly granted above are reserved by the copyright holder.
+For any use this license does not permit, contact the copyright holder to
+request written permission.
+
+Schematics you generate with the Software are yours; this license does not
+claim any rights in them. It governs the Software itself.
+
+The palette data shipped in backend/data/ describes the colors of Minecraft
+blocks. Minecraft is a trademark of Mojang Synergies AB. This project is not
+affiliated with, endorsed by, or associated with Mojang or Microsoft.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
