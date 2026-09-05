@@ -16,9 +16,9 @@ Plus the [**HTTP API**](docs/api.md) the web app is a client of, and
 
 ```
                         ┌──────────────────────────────┐
-  Web app  ─── HTTP ───▶│   schemgen2 (Rust binary)    │
+  Web app ─── HTTP ───▶│   schemgen2 (Rust binary)    │
                         │   voxelize → sample → dither │──▶ .litematic
-  CLI      ── direct ──▶│   → CIEDE2000 → NBT          │
+  CLI     ── direct ──▶│   → CIEDE2000 → NBT          │
                         └──────────────────────────────┘
 ```
 
