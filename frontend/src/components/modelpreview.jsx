@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { lightVector, lightAngles, LIGHT_DEFAULTS } from '../lighting.js'
 import { VERTEX_SHADER, FRAGMENT_SHADER } from '../delightshader.js'
 
@@ -58,6 +59,14 @@ export default function ModelPreview({ file, settings, onChange }) {
     controls.maxDistance = 12
     controls.target.set(0, 0, 0)
     controls.update()
+
+    // glTF defaults metallicFactor to 1, and a metal has no diffuse term: its
+    // colour is entirely reflected environment. Punctual lights alone leave one
+    // black except for pinpoint highlights, so give the scene something to
+    // reflect or every metallic model renders as a silhouette.
+    const pmrem = new THREE.PMREMGenerator(renderer)
+    const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04)
+    scene.environment = envRT.texture
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 2.2))
     const key = new THREE.DirectionalLight(0xffffff, 2.5)
@@ -118,6 +127,7 @@ export default function ModelPreview({ file, settings, onChange }) {
       controls.target.set(0, 0, 0)
       controls.update()
 
+      flattenTransparency(gltf.scene)
       state.meshes = buildDelitMaterials(gltf.scene)
       applyLighting(state, settingsRef.current)
       applyMode(state, modeRef.current)
@@ -222,6 +232,8 @@ export default function ModelPreview({ file, settings, onChange }) {
       stem.geometry.dispose()
       stem.material.dispose()
       controls.dispose()
+      envRT.dispose()
+      pmrem.dispose()
       renderer.dispose()
       sceneRef.current = null
       mount.replaceChildren()
@@ -323,6 +335,40 @@ function applyFilters(canvas, settings) {
   const contrast = Math.max(0, Number(settings.contrast || 1))
   const saturation = Math.max(0, Number(settings.saturation || 1))
   canvas.style.filter = `brightness(${brightness}) contrast(${contrast}) saturate(${saturation})`
+}
+
+// The converter has no transparency model. sample_colors.py weights every
+// surface it hits by that texel's alpha — alpha is coverage, not see-through —
+// and the result is opaque blocks. Nothing is blended and nothing is sorted.
+//
+// So nothing here is blended either. Leaving a material in three.js's
+// transparent queue makes it sort by object centroid, and on a model with many
+// interleaved meshes that order is wrong often enough that panels, roll cages
+// and seats blink out as the camera moves. Which materials it hits depends on
+// how the model was exported, so any rule that decides *which* ones to blend is
+// a rule that fails on the next model. Blend none of them: the preview is then
+// stable at every angle by construction, and it shows what conversion will
+// actually produce — a windscreen you cannot see through, because it is going
+// to become solid blocks.
+//
+// The alpha test drops only texels with no coverage at all, matching the
+// sampler, where alpha 0 contributes nothing and everything above it counts.
+const EMPTY_ALPHA = 0.05
+
+function flattenTransparency(root) {
+  const seen = new Set()
+  root.traverse((node) => {
+    if (!node.isMesh || !node.material) return
+    const mats = Array.isArray(node.material) ? node.material : [node.material]
+    for (const m of mats) {
+      if (!m || seen.has(m)) continue
+      seen.add(m)
+      m.transparent = false
+      m.depthWrite = true
+      m.alphaTest = m.map ? EMPTY_ALPHA : 0
+      m.needsUpdate = true
+    }
+  })
 }
 
 // One de-lit material per mesh, mirroring what that mesh was already drawing.

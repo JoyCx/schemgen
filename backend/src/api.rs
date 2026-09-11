@@ -381,6 +381,23 @@ async fn preview_handler(state: web::Data<Arc<AppState>>, MultipartForm(form): M
     }))
 }
 
+/// Move an uploaded temp file to `dest`.
+///
+/// `TempFile::persist` renames, and a rename fails with `EXDEV` when the
+/// multipart temp directory and the upload directory are on different
+/// filesystems. That is the normal case on Linux, where `/tmp` is usually a
+/// tmpfs while the upload directory is not, so fall back to copying the bytes
+/// rather than letting the host's temp layout decide whether uploads work.
+fn persist_upload(upload: TempFile, dest: &Path) -> std::io::Result<()> {
+    match upload.file.persist(dest) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            std::fs::copy(e.file.path(), dest).map_err(|_| e.error)?;
+            Ok(())
+        }
+    }
+}
+
 #[post("/api/convert")]
 async fn convert_handler(
     state: web::Data<Arc<AppState>>,
@@ -420,7 +437,7 @@ async fn convert_handler(
         None
     };
 
-    if let Err(e) = form.file.file.persist(&glb_path) {
+    if let Err(e) = persist_upload(form.file, &glb_path) {
         log::error!("Failed to save upload: {e}");
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({"error": "Failed to save uploaded file"}));
@@ -512,7 +529,7 @@ async fn convert_batch_handler(
             filename: savedir::dedupe_filename(&savedir::sanitize_filename(&download_name), &mut used_names),
         });
 
-        if let Err(e) = file.file.persist(&glb_path) {
+        if let Err(e) = persist_upload(file, &glb_path) {
             log::error!("Failed to save upload {fname}: {e}");
             continue;
         }
