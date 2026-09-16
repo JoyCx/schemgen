@@ -11,7 +11,9 @@ Two ways to run it, one pipeline:
 | 1 | **CLI** — `schemgen2 convert model.glb`, scriptable, no server, no browser | [docs/cli.md](docs/cli.md) | Rust, Python |
 | 2 | **Web app** — drag and drop, 3D preview, live settings | [docs/web.md](docs/web.md) | Rust, Python, Node |
 
-Plus the [**HTTP API**](docs/api.md) the web app is a client of, and
+Plus the [**HTTP API**](docs/api.md) the web app is a client of, the
+[**roadmap**](docs/roadmap.md) for the UI redesign, the in-game mod and
+multi-version support, and
 [**the pipeline**](docs/pipeline.md) both share.
 
 ```
