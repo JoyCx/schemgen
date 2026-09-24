@@ -49,7 +49,7 @@ That is all any client needs. A client that renders a settings form reads
 | `POST` | `/api/jobs/{id}/save` | Copy the finished schematic into a folder |
 | `POST` | `/api/jobs/{id}/reveal` | Show it in the host's file manager |
 | `POST` | `/api/preview` | Convert without writing a file; returns the blocks |
-| `GET` | `/api/palette` | Blocks a conversion may choose: `{id: [r, g, b]}` |
+| `GET` | `/api/palette` | Blocks a conversion may choose: `{id: [r, g, b]}`; `?target=` for another version |
 | `GET` | `/api/system` | Host OS and what its file manager is called |
 | `POST` | `/api/output-dir/check` | Validate a folder without creating it |
 | `GET` | `/api/output-dir/suggestions` | Likely schematics folders on this machine |
@@ -101,9 +101,9 @@ whether the other routes do.
     },
     …
   ],
-  "targets": [{ "id": "26.3", "data_version": 5023, "schematic_version": 7 }, …],
+  "targets": [{ "id": "26.3", "data_version": 5023, "schematic_version": 7, "blocks": 181 }, …],
   "default_target": "1.21.8",
-  "formats": ["litematic"],
+  "formats": [{ "id": "litematic", "label": "Litematica (.litematic)", "extension": "litematic" }, …],
   "palette": { "entries": 181, "blocks": 181 },
   "limits": { "max_upload_bytes": 1073741824 }
 }
@@ -129,7 +129,10 @@ UIs. `when` shows or enables a field only while another has a given value.
 two that only change how a job runs (`output_dir`, `threads`).
 
 Defaults are the server's own: `schemgen2 serve --target 1.20.4` reports
-`"default": "1.20.4"` for `target`.
+`"default": "1.20.4"` for `target`. Each target's `blocks` is the size of its
+palette — older versions have fewer blocks (see [versions.md](versions.md)).
+`formats` are the values the `format` setting takes: `litematic`, `schem`
+(Sponge v2), `schem-v3` and `nbt` (vanilla structure).
 
 ### `POST /api/jobs`
 
@@ -267,7 +270,8 @@ on the final event. It cannot send headers either — with a token, pass it as
 
 ### `GET /api/jobs/{id}/download`, `/thumbnail.png`
 
-The schematic (`Content-Disposition: attachment` with its name) and a
+The schematic, named for its format (`castle.litematic`, `castle.schem`,
+`castle.nbt`) in `Content-Disposition: attachment`, and a
 256 × 256 transparent PNG of it, drawn isometrically. Both are `409` until
 the job is `done`.
 
@@ -358,6 +362,22 @@ Finished jobs and their files are forgotten after 24 hours (`--job-ttl <hours>`,
 same way. Jobs are kept in memory, so a restart forgets them.
 
 Limits: 1 GiB per model file; `max_size` at most 2048.
+
+### `GET /api/output-dir/suggestions`
+
+```json
+{
+  "suggestions": [
+    { "path": "C:\\Users\\me\\curseforge\\minecraft\\Instances\\ATM9\\schematics", "exists": true,
+      "instance": { "name": "ATM9", "launcher": "CurseForge", "mc_version": "1.20.1", "target": "1.20.1" } },
+    { "path": "C:\\Users\\me\\AppData\\Roaming\\.minecraft\\schematics", "exists": false, "instance": null }
+  ]
+}
+```
+
+Existing folders first. A folder inside a launcher instance (CurseForge, Prism
+Launcher, MultiMC, Modrinth App) carries the instance, the Minecraft version it
+runs when the launcher records one, and the target that suits it.
 
 ## v1 (legacy)
 

@@ -10,6 +10,7 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 
+use crate::formats::Format;
 use crate::settings::{limits, FloatRange, Settings};
 use crate::targets::TARGETS;
 
@@ -298,6 +299,22 @@ pub fn schema() -> Schema {
         })
         .collect();
 
+    let mut format = field(
+        "format",
+        Kind::Choice,
+        "output",
+        "File format",
+        "Litematica's .litematic; .schem for WorldEdit and FAWE (v2 reads everywhere, v3 needs \
+         WorldEdit 7.3+); .nbt for structure blocks and /place template.",
+    );
+    format.choices = Format::ALL
+        .iter()
+        .map(|f| Choice {
+            value: json!(f.id()),
+            label: f.label(),
+        })
+        .collect();
+
     let mut schematic_name = field(
         "schematic_name",
         Kind::Text,
@@ -447,6 +464,7 @@ pub fn schema() -> Schema {
         .range(UNIT, 0.01)
         .when("color_sampling", sampling),
         target,
+        format,
         schematic_name,
         output_dir,
         threads,

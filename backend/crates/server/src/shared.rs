@@ -23,21 +23,22 @@ pub type App = web::Data<Arc<AppState>>;
 /// Cheap liveness probe. A client pings this before offering to convert, so a
 /// stopped server is reported up front instead of as a failed upload later.
 #[get("/api/health")]
-async fn health(app: App) -> HttpResponse {
+async fn health(app: App) -> ApiResult<HttpResponse> {
     let target = app.defaults.target();
-    HttpResponse::Ok().json(json!({
+    let current = app.palettes.for_target(&target)?;
+    Ok(HttpResponse::Ok().json(json!({
         "status": "ok",
         "name": "schemgen2",
         "version": schemgen_core::VERSION,
         "api": 2,
-        "palette_entries": app.palette.len(),
-        "palette_blocks": app.palette.block_count(),
+        "palette_entries": current.len(),
+        "palette_blocks": current.block_count(),
         "target": target.key(),
         "data_version": target.data_version,
         "schematic_version": target.schematic_version,
         "os": std::env::consts::OS,
         "auth": app.token.is_some(),
-    }))
+    })))
 }
 
 /// What this machine calls its file manager, so a UI can label the button.
@@ -49,10 +50,20 @@ async fn system() -> HttpResponse {
     }))
 }
 
-/// Every block a conversion may choose: `{short_id: [r, g, b]}`.
+#[derive(Deserialize)]
+struct PaletteQuery {
+    target: Option<String>,
+}
+
+/// Every block a conversion may choose, `{short_id: [r, g, b]}` — for the
+/// server's default target, or `?target=1.20.4`.
 #[get("/api/palette")]
-async fn palette(app: App) -> HttpResponse {
-    HttpResponse::Ok().json(app.palette.to_palette_json())
+async fn palette(app: App, query: web::Query<PaletteQuery>) -> ApiResult<HttpResponse> {
+    let target = match query.target.as_deref().filter(|t| !t.trim().is_empty()) {
+        Some(raw) => schemgen_core::Target::parse(raw)?,
+        None => app.defaults.target(),
+    };
+    Ok(HttpResponse::Ok().json(app.palettes.for_target(&target)?.to_palette_json()))
 }
 
 #[derive(Deserialize)]
@@ -72,18 +83,38 @@ async fn check_output_dir(body: web::Json<FolderRequest>) -> HttpResponse {
     }
 }
 
-/// Likely Litematica schematic folders on this machine.
+/// Likely Litematica schematic folders on this machine. A folder inside a
+/// launcher instance says which instance, which Minecraft version it runs and
+/// the target that suits it, so a UI can offer to switch.
 #[get("/api/output-dir/suggestions")]
 async fn output_dir_suggestions() -> HttpResponse {
     let items: Vec<_> = web::block(savedir::suggestions)
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|(path, exists)| json!({ "path": path.display().to_string(), "exists": exists }))
+        .map(|s| {
+            let instance = s.instance.map(|i| {
+                let target = i
+                    .mc_version
+                    .as_deref()
+                    .and_then(schemgen_core::Target::for_game_version)
+                    .map(|t| t.id);
+                json!({
+                    "name": i.name,
+                    "launcher": i.launcher,
+                    "mc_version": i.mc_version,
+                    "target": target,
+                })
+            });
+            json!({
+                "path": s.path.display().to_string(),
+                "exists": s.exists,
+                "instance": instance,
+            })
+        })
         .collect();
     HttpResponse::Ok().json(json!({ "suggestions": items }))
 }
-
 /// Open a folder in the host's file manager.
 #[post("/api/reveal-folder")]
 async fn reveal_folder(body: web::Json<FolderRequest>) -> ApiResult<HttpResponse> {

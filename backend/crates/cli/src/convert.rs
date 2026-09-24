@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
 
-use schemgen_core::formats::{self, Metadata};
-use schemgen_core::{pipeline, Palette, Progress, Settings, Stage, Target};
+use schemgen_core::formats::Metadata;
+use schemgen_core::{pipeline, Palette, PaletteSet, Progress, Settings, Stage, Target};
 use schemgen_server::savedir;
 
 use crate::args::{settings_from_args, ParsedArgs};
@@ -42,10 +42,14 @@ impl Progress for StderrProgress {
 }
 
 /// Run `schemgen2 convert`; returns the process exit code.
-pub fn convert(args: &ParsedArgs, palette: &Palette) -> Result<i32, String> {
+pub fn convert(args: &ParsedArgs, palettes: &PaletteSet) -> Result<i32, String> {
     let quiet = args.has("quiet") || args.has("json");
     let inputs = collect_inputs(&args.positional)?;
     let base = settings_from_args(args)?;
+    let target = base.target();
+    let palette = palettes.for_target(&target).map_err(|e| e.to_string())?;
+    let palette = palette.as_ref();
+    let extension = base.format().extension();
 
     let explicit_output = args.get("output").map(PathBuf::from);
     if explicit_output.is_some() && inputs.len() > 1 {
@@ -69,7 +73,8 @@ pub fn convert(args: &ParsedArgs, palette: &Palette) -> Result<i32, String> {
             .and_then(|s| s.to_str())
             .unwrap_or("output");
         let name = args.get("name").unwrap_or(stem).to_string();
-        let filename = savedir::dedupe_filename(&savedir::sanitize_filename(&name), &mut taken);
+        let filename =
+            savedir::dedupe_filename(&savedir::sanitize_filename(&name, extension), &mut taken);
         let output = match (&explicit_output, &out_dir) {
             (Some(path), _) => path.clone(),
             (None, Some(dir)) => dir.join(&filename),
@@ -85,11 +90,9 @@ pub fn convert(args: &ParsedArgs, palette: &Palette) -> Result<i32, String> {
     let threads = args
         .number::<usize>("threads", 1)?
         .clamp(1, plan.len().max(1));
-    let target = base.target();
     if !quiet {
         eprintln!(
-            "SchemGen2 {} — {} file(s), target {} (data version {}), {} blocks in palette",
-            schemgen_core::VERSION,
+            "SchemGen2 {} — {} file(s) to .{extension}, target {} (data version {}), {} blocks in palette",schemgen_core::VERSION,
             plan.len(),
             target.key(),
             target.data_version,
@@ -156,7 +159,9 @@ fn convert_one(
     let started = Instant::now();
     let grid = pipeline::run(input, settings, palette, &mut progress).map_err(|e| e.to_string())?;
     let meta = Metadata::new(&settings.schematic_name);
-    formats::litematic::write(output, &grid, &meta, &settings.target())
+    settings
+        .format()
+        .write(output, &grid, &meta, &settings.target())
         .map_err(|e| e.to_string())?;
     Ok(Converted {
         blocks: grid.len(),
@@ -178,8 +183,8 @@ fn report(outcomes: &[Outcome], target: &Target, as_json: bool, quiet: bool) {
                     "input": o.input.display().to_string(),
                     "output": o.output.display().to_string(),
                     "name": o.name,
-                    "voxels": r.blocks,
-                    "unique_blocks": r.unique_blocks,
+                    "format": o.output.extension().and_then(|e| e.to_str()).unwrap_or_default(),
+                    "voxels": r.blocks,"unique_blocks": r.unique_blocks,
                     "grid": r.dims,
                     "seconds": r.seconds,
                 }),
@@ -213,6 +218,14 @@ fn report(outcomes: &[Outcome], target: &Target, as_json: bool, quiet: bool) {
                         "{} — {} blocks, {} unique, {x}×{y}×{z}, {:.1}s",
                         o.name, r.blocks, r.unique_blocks, r.seconds
                     );
+                    let limit = schemgen_core::formats::structure::STRUCTURE_BLOCK_LIMIT;
+                    let is_nbt = o.output.extension().is_some_and(|e| e == "nbt");
+                    if is_nbt && r.dims.iter().any(|&d| d > limit) {
+                        eprintln!(
+                            "note: structure blocks load at most {limit}×{limit}×{limit}; \
+                             place this one with /place template"
+                        );
+                    }
                 }
                 println!("{}", o.output.display());
             }
@@ -242,15 +255,20 @@ fn collect_inputs(positional: &[String]) -> Result<Vec<PathBuf>, String> {
         .collect()
 }
 
-/// `schemgen2 palette`: the blocks a conversion may choose.
-pub fn palette(args: &ParsedArgs, palette: &Palette) {
+/// `schemgen2 palette`: the blocks a conversion for `--target` may choose.
+pub fn palette(args: &ParsedArgs, palettes: &PaletteSet) -> Result<(), String> {
+    let target = match args.get("target") {
+        Some(raw) => Target::parse(raw).map_err(|e| e.to_string())?,
+        None => Target::default(),
+    };
+    let palette = palettes.for_target(&target).map_err(|e| e.to_string())?;
     let table = palette.to_palette_json();
     if args.has("json") {
         println!(
             "{}",
             serde_json::to_string_pretty(&table).unwrap_or_default()
         );
-        return;
+        return Ok(());
     }
     let mut rows: Vec<(&String, &[f32; 3])> = table.iter().collect();
     rows.sort_by(|a, b| a.0.cmp(b.0));
@@ -260,9 +278,15 @@ pub fn palette(args: &ParsedArgs, palette: &Palette) {
             name, rgb[0] as u8, rgb[1] as u8, rgb[2] as u8
         );
     }
-    eprintln!("{} blocks, {} palette entries", rows.len(), palette.len());
+    eprintln!(
+        "{} blocks, {} palette entries — Minecraft {} (data version {})",
+        rows.len(),
+        palette.len(),
+        target.key(),
+        target.data_version
+    );
+    Ok(())
 }
-
 /// `schemgen2 targets`: the Minecraft versions schematics can be made for.
 pub fn targets(args: &ParsedArgs) {
     let default = Target::default();

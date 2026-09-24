@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
 import { checkOutputDir, fetchOutputDirSuggestions, revealFolder } from '../api.js'
 
-export default function Settings({ settings, onChange, savedPath = '' }) {
+// "CurseForge · All the Mods · 1.20.1" for a folder inside a launcher instance.
+function instanceLabel(instance) {
+  return [instance.launcher, instance.name, instance.mc_version].filter(Boolean).join(' · ')
+}
+
+export default function Settings({ settings, schema, onChange, savedPath = '' }) {
   const update = (key, value) => onChange({ ...settings, [key]: value })
 
   // Browsers cannot hand a real folder path to a page, so the folder is typed
@@ -141,10 +146,22 @@ export default function Settings({ settings, onChange, savedPath = '' }) {
                 key={sug.path}
                 type="button"
                 className={`output-dir-chip${sug.exists ? ' output-dir-chip--exists' : ''}`}
-                title={sug.exists ? sug.path : `${sug.path} (will be created)`}
-                onClick={() => update('output_dir', sug.path)}
+                title={
+                  (sug.exists ? sug.path : `${sug.path} (will be created)`) +
+                  (sug.instance?.target
+                    ? `\nAlso sets the target to Minecraft ${sug.instance.target}`
+                    : '')
+                }
+                onClick={() =>
+                  onChange({
+                    ...settings,
+                    output_dir: sug.path,
+                    // A folder inside an instance knows its game version.
+                    ...(sug.instance?.target ? { target: sug.instance.target } : {}),
+                  })
+                }
               >
-                {sug.path}
+                {sug.instance ? instanceLabel(sug.instance) : sug.path}
               </button>
             ))}
           </div>
@@ -185,6 +202,40 @@ export default function Settings({ settings, onChange, savedPath = '' }) {
           />
           <span>Color Sampling</span>
         </label>
+
+        {schema && (
+          <label className="toggle">
+            <span>Minecraft:</span>
+            <select
+              value={settings.target || schema.default_target}
+              onChange={(e) => update('target', e.target.value)}
+              title="Only blocks that exist in this version are used"
+            >
+              {schema.targets.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.id}
+                  {t.id === schema.default_target ? ' (default)' : ''} — {t.blocks} blocks
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {schema && (
+          <label className="toggle">
+            <span>Format:</span>
+            <select
+              value={settings.format || 'litematic'}
+              onChange={(e) => update('format', e.target.value)}
+            >
+              {schema.formats.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="toggle">
           <span>Default Block:</span>

@@ -159,6 +159,7 @@ pub fn from_v1_fields(defaults: &Settings, form: &Form) -> ApiResult<Request> {
         highlight_recovery: num("highlight_recovery", d.highlight_recovery),
         delight: num("delight", d.delight),
         target: d.target.clone(),
+        format: d.format.clone(),
         schematic_name: form.text("schematic_name").unwrap_or_default().to_string(),
     }
     .normalized()?;
@@ -212,8 +213,9 @@ pub fn create_jobs(app: &AppState, files: Vec<Upload>, request: &Request) -> Vec
             } else {
                 stem
             };
+            let extension = request.settings.format().extension();
             let file_name =
-                savedir::dedupe_filename(&savedir::sanitize_filename(&name), &mut taken);
+                savedir::dedupe_filename(&savedir::sanitize_filename(&name, extension), &mut taken);
             let settings = Settings {
                 schematic_name: name.clone(),
                 ..request.settings.clone()

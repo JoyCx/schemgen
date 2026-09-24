@@ -54,8 +54,8 @@ async function request(path, { method = 'GET', body, json, signal, fallbackError
 
 export const fetchHealth = () => request('/health')
 export const fetchSchema = () => request('/schema')
-export const fetchPalette = () => request('/palette')
-// Host info — notably what to call the file manager in button labels.
+export const fetchPalette = (target) =>
+  request(target ? `/palette?target=${encodeURIComponent(target)}` : '/palette') // Host info — notably what to call the file manager in button labels.
 export const fetchSystemInfo = () => request('/system')
 
 // ---- Jobs ------------------------------------------------------------------

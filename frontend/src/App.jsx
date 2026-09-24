@@ -9,6 +9,7 @@ import {
   startJobs,
   watchJob,
   fetchPalette,
+  fetchSchema,
   fetchHealth,
   fetchPreview,
   downloadUrl,
@@ -23,20 +24,24 @@ import './App.css'
 
 const OUTPUT_PREFS_KEY = 'schemgen2.output'
 
-// Remember the output folder between sessions — it is a machine-level choice,
-// not something to retype on every visit.
+// Remember the output folder, target version and file format between
+// sessions — they are machine-level choices, not something to redo per visit.
 function loadOutputPrefs() {
+  const empty = { output_dir: '', auto_save: false }
   try {
     const raw = localStorage.getItem(OUTPUT_PREFS_KEY)
-    if (!raw) return { output_dir: '', auto_save: false }
+    if (!raw) return empty
     const p = JSON.parse(raw)
-    return { output_dir: p.output_dir || '', auto_save: !!p.auto_save }
+    return {
+      output_dir: p.output_dir || '',
+      auto_save: !!p.auto_save,
+      ...(p.target ? { target: p.target } : {}),
+      ...(p.format ? { format: p.format } : {}),
+    }
   } catch {
-    return { output_dir: '', auto_save: false }
+    return empty
   }
-}
-
-// The lighting knobs, in the order the conversion key and the preview both
+} // The lighting knobs, in the order the conversion key and the preview both
 // read them. Kept in one place so adding a knob cannot update one and not the
 // other — which would leave the preview showing a stale conversion.
 const LIGHT_KEYS = Object.keys(LIGHT_DEFAULTS)
@@ -55,10 +60,11 @@ function conversionKey(s) {
     s.saturation,
     s.no_color_block,
     s.schematic_name,
+    s.target,
+    s.format,
     ...LIGHT_KEYS.map((k) => s[k]),
   ])
 }
-
 export default function App() {
   const [files, setFiles] = useState([])
   const [status, setStatus] = useState('idle') // idle | uploading | running | done | error
@@ -80,8 +86,7 @@ export default function App() {
     ...loadOutputPrefs(),
   }))
   const [version, setVersion] = useState('')
-
-  // Persist the folder choice.
+  const [schema, setSchema] = useState(null) // Persist the folder choice.
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -89,14 +94,14 @@ export default function App() {
         JSON.stringify({
           output_dir: settings.output_dir,
           auto_save: settings.auto_save,
+          target: settings.target,
+          format: settings.format,
         }),
       )
     } catch {
       /* private mode — not worth surfacing */
     }
-  }, [settings.output_dir, settings.auto_save])
-
-  // Single-file mode only when exactly one file is present.
+  }, [settings.output_dir, settings.auto_save, settings.target, settings.format]) // Single-file mode only when exactly one file is present.
   const file = files.length === 1 ? files[0] : null
   const batchMode = files.length > 1
 
@@ -116,12 +121,17 @@ export default function App() {
   settingsRef.current = settings
   statusRef.current = status
 
+  // The palette shown and matched against depends on the target version.
   useEffect(() => {
-    fetchPalette()
+    fetchPalette(settings.target)
       .then(setPalette)
       .catch(() => {})
-  }, [])
-  // The version shown is the server's — Cargo.toml is the one place it is set.
+  }, [settings.target])
+  useEffect(() => {
+    fetchSchema()
+      .then(setSchema)
+      .catch(() => {})
+  }, []) // The version shown is the server's — Cargo.toml is the one place it is set.
   useEffect(() => {
     fetchHealth()
       .then((h) => setVersion(h.version || ''))
@@ -329,10 +339,9 @@ export default function App() {
     settings.contrast,
     settings.saturation,
     settings.no_color_block,
+    settings.target,
     ...LIGHT_KEYS.map((k) => settings[k]),
-  ])
-
-  // ---- Batch conversion -----------------------------------------------------
+  ]) // ---- Batch conversion -----------------------------------------------------
   const stopBatchWatches = useCallback(() => {
     for (const stop of batchWatchesRef.current.values()) stop()
     batchWatchesRef.current.clear()
@@ -474,6 +483,7 @@ export default function App() {
         {files.length > 0 && (
           <Settings
             settings={settings}
+            schema={schema}
             onChange={setSettings}
             savedPath={result?.saved_path || ''}
           />

@@ -6,10 +6,99 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::Serialize;
+
 use crate::error::{Error, Result};
+use crate::grid::BlockGrid;
+use crate::targets::Target;
 
 pub mod litematic;
 pub mod nbt;
+pub mod sponge;
+pub mod structure;
+
+/// A schematic file format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Format {
+    /// Litematica's `.litematic`.
+    Litematic,
+    /// Sponge schematic v2 — WorldEdit 7.x, FAWE; Litematica imports it.
+    Schem,
+    /// Sponge schematic v3 — WorldEdit 7.3 and later.
+    SchemV3,
+    /// Vanilla structure file — structure blocks and `/place template`.
+    Nbt,
+}
+
+impl Format {
+    pub const ALL: [Format; 4] = [
+        Format::Litematic,
+        Format::Schem,
+        Format::SchemV3,
+        Format::Nbt,
+    ];
+
+    /// The id settings and the API use.
+    pub fn id(self) -> &'static str {
+        match self {
+            Format::Litematic => "litematic",
+            Format::Schem => "schem",
+            Format::SchemV3 => "schem-v3",
+            Format::Nbt => "nbt",
+        }
+    }
+
+    /// File extension, without the dot.
+    pub fn extension(self) -> &'static str {
+        match self {
+            Format::Litematic => "litematic",
+            Format::Schem | Format::SchemV3 => "schem",
+            Format::Nbt => "nbt",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Format::Litematic => "Litematica (.litematic)",
+            Format::Schem => "WorldEdit (.schem, Sponge v2)",
+            Format::SchemV3 => "WorldEdit 7.3+ (.schem, Sponge v3)",
+            Format::Nbt => "Structure block (.nbt)",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Result<Format> {
+        let raw = raw.trim().trim_start_matches('.').to_ascii_lowercase();
+        Format::ALL
+            .into_iter()
+            .find(|f| f.id() == raw)
+            .ok_or_else(|| {
+                Error::invalid(
+                    "format",
+                    format!(
+                        "unknown format \"{raw}\" — one of {}",
+                        Format::ALL.map(Format::id).join(", ")
+                    ),
+                )
+            })
+    }
+
+    /// Write `grid` to `path` in this format, for `target`.
+    pub fn write(
+        self,
+        path: &Path,
+        grid: &BlockGrid,
+        meta: &Metadata,
+        target: &Target,
+    ) -> Result<()> {
+        match self {
+            Format::Litematic => litematic::write(path, grid, meta, target),
+            Format::Schem => sponge::write_v2(path, grid, meta, target),
+            Format::SchemV3 => sponge::write_v3(path, grid, meta, target),
+            Format::Nbt => structure::write(path, grid, meta, target),
+        }
+    }
+}
 
 /// What a schematic says about itself.
 #[derive(Debug, Clone)]
@@ -90,6 +179,35 @@ pub fn temp_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn formats_parse_by_id() {
+        for f in Format::ALL {
+            assert_eq!(Format::parse(f.id()).unwrap(), f);
+        }
+        assert_eq!(Format::parse(" .NBT").unwrap(), Format::Nbt);
+        assert!(Format::parse("mcedit").is_err());
+    }
+
+    #[test]
+    fn every_format_writes_a_readable_file() {
+        let dir = std::env::temp_dir().join(format!("schemgen_fmt_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let grid = BlockGrid::from_names(
+            vec![[0, 0, 0], [1, 2, 3]],
+            ["minecraft:stone", "minecraft:tuff"],
+            [0.0; 3],
+            1.0,
+        );
+        for f in Format::ALL {
+            let path = dir.join(format!("out.{}", f.extension()));
+            f.write(&path, &grid, &Metadata::new("t"), &Target::default())
+                .unwrap();
+            let (_, root) = nbt::read_gzip(std::fs::File::open(&path).unwrap()).unwrap();
+            assert!(!root.keys().is_empty(), "{f:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn failed_writes_leave_nothing_behind() {

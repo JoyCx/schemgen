@@ -12,7 +12,7 @@ use actix_web::http::StatusCode;
 use actix_web::{test, web, App};
 use serde_json::{json, Value};
 
-use schemgen_core::{color_table, Palette, Settings};
+use schemgen_core::{PaletteSet, Settings};
 
 use super::*;
 use crate::jobs::Status;
@@ -38,7 +38,7 @@ fn voxelizer_available() -> bool {
 }
 
 fn config(tag: &str) -> ServerConfig {
-    let mut c = ServerConfig::new(Palette::from_table(&color_table::builtin()).unwrap());
+    let mut c = ServerConfig::new(PaletteSet::builtin());
     c.work_dir = std::env::temp_dir().join(format!("schemgen_srv_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&c.work_dir);
     c
@@ -111,7 +111,7 @@ async fn wait_finished(state: &AppState, id: &str) -> jobs::JobState {
 
 #[actix_web::test]
 async fn health_reports_version_and_target() {
-    let app = service!(build_state(&config("health")).unwrap());
+    let app = service!(build_state(&mut config("health")).unwrap());
     let body: Value = test::call_and_read_body_json(
         &app,
         test::TestRequest::get().uri("/api/health").to_request(),
@@ -132,7 +132,7 @@ async fn schema_describes_fields_and_targets() {
         target: "1.20.4".into(),
         ..Settings::default()
     };
-    let app = service!(build_state(&c).unwrap());
+    let app = service!(build_state(&mut c).unwrap());
     let body: Value = test::call_and_read_body_json(
         &app,
         test::TestRequest::get().uri("/api/schema").to_request(),
@@ -165,7 +165,7 @@ async fn schema_describes_fields_and_targets() {
 
 #[actix_web::test]
 async fn foreign_hosts_and_origins_are_refused() {
-    let app = service!(build_state(&config("guard")).unwrap());
+    let app = service!(build_state(&mut config("guard")).unwrap());
     let req = |host: &str, origin: Option<&str>| {
         let mut r = test::TestRequest::get()
             .uri("/api/health")
@@ -199,7 +199,7 @@ async fn foreign_hosts_and_origins_are_refused() {
 async fn token_is_required_everywhere_but_health() {
     let mut c = config("token");
     c.token = Some("s3cret".into());
-    let app = service!(build_state(&c).unwrap());
+    let app = service!(build_state(&mut c).unwrap());
     let get = |uri: &str| test::TestRequest::get().uri(uri);
     assert_eq!(
         test::call_service(&app, get("/api/health").to_request())
@@ -237,7 +237,7 @@ async fn token_is_required_everywhere_but_health() {
 
 #[actix_web::test]
 async fn bad_requests_say_what_is_wrong() {
-    let app = service!(build_state(&config("bad")).unwrap());
+    let app = service!(build_state(&mut config("bad")).unwrap());
 
     let resp = test::call_service(&app, post_multipart("/api/jobs", &[], &[]).to_request()).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -298,7 +298,7 @@ async fn bad_requests_say_what_is_wrong() {
 async fn queued_jobs_cancel_immediately() {
     let mut c = config("cancel");
     c.max_jobs = 1;
-    let state = build_state(&c).unwrap();
+    let state = build_state(&mut c).unwrap();
     // Hold the only slot so everything submitted stays queued.
     let slot = Arc::clone(&state.slots).acquire_owned().await.unwrap();
     let app = service!(Arc::clone(&state));
@@ -347,7 +347,7 @@ async fn v2_job_runs_to_a_valid_schematic() {
     if !voxelizer_available() {
         return;
     }
-    let state = build_state(&config("v2")).unwrap();
+    let state = build_state(&mut config("v2")).unwrap();
     let app = service!(Arc::clone(&state));
     let resp = test::call_service(
         &app,
@@ -445,7 +445,7 @@ async fn v1_routes_still_work() {
     if !voxelizer_available() {
         return;
     }
-    let state = build_state(&config("v1")).unwrap();
+    let state = build_state(&mut config("v1")).unwrap();
     let app = service!(Arc::clone(&state));
     let body: Value = test::call_and_read_body_json(
         &app,
@@ -495,7 +495,7 @@ async fn previews_come_packed_for_v2_and_as_objects_for_v1() {
     if !voxelizer_available() {
         return;
     }
-    let app = service!(build_state(&config("preview")).unwrap());
+    let app = service!(build_state(&mut config("preview")).unwrap());
 
     let v2: Value = test::call_and_read_body_json(
         &app,
@@ -540,8 +540,8 @@ async fn previews_come_packed_for_v2_and_as_objects_for_v1() {
 
 #[actix_web::test]
 async fn sweep_forgets_expired_jobs_and_stray_files() {
-    let c = config("sweep");
-    let state = build_state(&c).unwrap();
+    let mut c = config("sweep");
+    let state = build_state(&mut c).unwrap();
     let job = jobs::Job::new(
         &state.outputs,
         jobs::NewJob {
@@ -571,4 +571,119 @@ async fn sweep_forgets_expired_jobs_and_stray_files() {
     assert!(!job.output.exists());
     assert!(stray.exists());
     let _ = std::fs::remove_dir_all(&c.work_dir);
+}
+
+#[actix_web::test]
+async fn palettes_follow_the_target() {
+    let app = service!(build_state(&mut config("palette")).unwrap());
+    let old: Value = test::call_and_read_body_json(
+        &app,
+        test::TestRequest::get()
+            .uri("/api/palette?target=1.16.5")
+            .to_request(),
+    )
+    .await;
+    let new: Value = test::call_and_read_body_json(
+        &app,
+        test::TestRequest::get().uri("/api/palette").to_request(),
+    )
+    .await;
+    let (old, new) = (old.as_object().unwrap(), new.as_object().unwrap());
+    assert!(old.len() < new.len(), "{} vs {}", old.len(), new.len());
+    assert!(!old.contains_key("deepslate") && new.contains_key("deepslate"));
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/api/palette?target=1.8")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let schema: Value = test::call_and_read_body_json(
+        &app,
+        test::TestRequest::get().uri("/api/schema").to_request(),
+    )
+    .await;
+    let blocks_for = |id: &str| {
+        schema["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == id)
+            .unwrap()["blocks"]
+            .as_u64()
+            .unwrap()
+    };
+    assert_eq!(blocks_for("1.16.5") as usize, old.len());
+    assert!(blocks_for("26.3") >= blocks_for("1.21.1"));
+    let formats: Vec<&str> = schema["formats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(formats, ["litematic", "schem", "schem-v3", "nbt"]);
+}
+
+#[actix_web::test]
+async fn old_targets_never_get_newer_blocks() {
+    if !voxelizer_available() {
+        return;
+    }
+    let state = build_state(&mut config("gating")).unwrap();
+    let app = service!(Arc::clone(&state));
+    let body: Value = test::call_and_read_body_json(
+        &app,
+        post_multipart(
+            "/api/jobs",
+            &[(
+                "file",
+                "m.glb",
+                std::fs::read(fixture("metal_transforms.glb")).unwrap(),
+            )],
+            &[(
+                "settings",
+                r#"{"max_size": 40, "target": "1.16.5", "format": "schem"}"#,
+            )],
+        )
+        .to_request(),
+    )
+    .await;
+    let id = body["job_id"].as_str().unwrap().to_string();
+    let finished = wait_finished(&state, &id).await;
+    assert_eq!(finished.status, Status::Done, "{:?}", finished.error);
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/api/jobs/{id}/download"))
+            .to_request(),
+    )
+    .await;
+    let disposition = resp
+        .headers()
+        .get("content-disposition")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(disposition.contains("m.schem"), "{disposition}");
+    let bytes = test::read_body(resp).await;
+    let (_, root) = schemgen_core::formats::nbt::read_gzip(&bytes[..]).unwrap();
+    use schemgen_core::formats::nbt::Tag;
+    assert_eq!(root.get("Version"), Some(&Tag::Int(2)));
+    assert_eq!(root.get("DataVersion"), Some(&Tag::Int(2586)));
+    let Some(Tag::Compound(palette)) = root.get("Palette") else {
+        panic!("Palette")
+    };
+    let versions = schemgen_core::BlockVersions::builtin();
+    let floor = schemgen_core::targets::FLOOR;
+    for (name, _) in palette {
+        assert!(
+            versions.exists_in(name, &floor),
+            "{name} does not exist in 1.16.5"
+        );
+    }
+    assert!(palette.len() > 2, "some color blocks were used");
 }

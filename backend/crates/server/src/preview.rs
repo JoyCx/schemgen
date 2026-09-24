@@ -5,8 +5,6 @@
 //! v2 response. A v1 request — recognizable because v1 always sent
 //! `max_size` as its own field — gets the old one, `{grid, blocks:[{x,y,z,name}]}`.
 
-use std::sync::Arc;
-
 use actix_multipart::Multipart;
 use actix_web::{post, HttpResponse};
 use base64::Engine;
@@ -64,7 +62,7 @@ async fn preview(app: App, payload: Multipart) -> ApiResult<HttpResponse> {
 
     let cancel = Cancel::new();
     let _guard = CancelOnDrop(cancel.clone());
-    let palette = Arc::clone(&app.palette);
+    let palette = app.palettes.for_target(&request.settings.target())?;
     let settings = request.settings.clone();
     let path = upload.path.clone();
     let started = std::time::Instant::now();

@@ -61,6 +61,26 @@ jobs:
           workspaces: backend
       - run: cargo check --workspace --all-targets --locked
 
+  outputs:
+    name: Every target × format, read back independently
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install voxelizer and reader dependencies
+        run: python -m pip install "trimesh[easy]" numpy scipy Pillow litemapy nbtlib
+      - name: Build
+        working-directory: backend
+        run: cargo build --release --locked
+      - name: Convert and check
+        run: python tools/check_outputs.py --binary backend/target/release/schemgen2
+
   python:
     name: Python sampler (${{ matrix.os }})
     strategy:

@@ -10,6 +10,7 @@ use serde_json::json;
 
 use schemgen_core::schema::schema;
 use schemgen_core::targets::TARGETS;
+use schemgen_core::Format;
 
 use crate::error::{ApiError, ApiResult};
 use crate::jobs::{self, Status};
@@ -22,7 +23,7 @@ use crate::sse;
 /// ranges, defaults, groups, labels and help; the Minecraft versions it can
 /// target; and the palette's size.
 #[get("/api/schema")]
-async fn get_schema(app: App) -> HttpResponse {
+async fn get_schema(app: App) -> ApiResult<HttpResponse> {
     let mut schema = schema();
     // Defaults are this server's, which may target another version than the
     // built-in default.
@@ -32,32 +33,35 @@ async fn get_schema(app: App) -> HttpResponse {
             field.default = v.clone();
         }
     }
-    let targets: Vec<_> = TARGETS
+    let mut targets = Vec::new();
+    for t in TARGETS.iter().rev() {
+        targets.push(json!({
+            "id": t.id,
+            "data_version": t.data_version,
+            "schematic_version": t.schematic_version,
+            "blocks": app.palettes.for_target(t)?.block_count(),
+        }));
+    }
+    let formats: Vec<_> = Format::ALL
         .iter()
-        .rev()
-        .map(|t| {
-            json!({
-                "id": t.id,
-                "data_version": t.data_version,
-                "schematic_version": t.schematic_version,
-            })
-        })
+        .map(|f| json!({ "id": f.id(), "label": f.label(), "extension": f.extension() }))
         .collect();
-    HttpResponse::Ok().json(json!({
+    let palette = app.palettes.for_target(&app.defaults.target())?;
+    Ok(HttpResponse::Ok().json(json!({
         "version": schemgen_core::VERSION,
         "groups": schema.groups,
         "fields": schema.fields,
         "targets": targets,
         "default_target": app.defaults.target().key(),
-        "formats": ["litematic"],
+        "formats": formats,
         "palette": {
-            "entries": app.palette.len(),
-            "blocks": app.palette.block_count(),
+            "entries": palette.len(),
+            "blocks": palette.block_count(),
         },
         "limits": {
             "max_upload_bytes": app.max_upload,
         },
-    }))
+    })))
 }
 
 /// Start converting one or more uploaded models: `file` / `files` parts plus

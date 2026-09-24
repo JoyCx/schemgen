@@ -42,6 +42,7 @@ schemgen2 convert models/*.glb -d ~/schematics --threads 4
 | `-o, --output <FILE>` | Exact path. Single input only. |
 | `-d, --out-dir <DIR>` | Folder to write into. `~` and `%APPDATA%` expand; the folder is created if missing. |
 | `-n, --name <NAME>` | Schematic name. Defaults to the input's file stem. Single input only. |
+| `-f, --format <FORMAT>` | `litematic` (default), `schem` (Sponge v2 — WorldEdit, FAWE), `schem-v3` (WorldEdit 7.3+) or `nbt` (structure blocks, `/place template`). The extension follows the format. |
 
 With neither `-o` nor `-d`, the file lands beside its input. Two identically
 named models in one run become `name.litematic` and `name-2.litematic` rather
@@ -192,8 +193,9 @@ schemgen2 schema           # every setting: type, range, default, group, label, 
 ## palette
 
 ```bash
-schemgen2 palette              # name + hex, one block per line
-schemgen2 palette --json       # {"minecraft:stone": [125.0, 125.0, 125.0], ...}
+schemgen2 palette                   # name + hex, one block per line
+schemgen2 palette --target 1.16.5   # only what exists in 1.16.5
+schemgen2 palette --json            # {"stone": [125.0, 125.0, 125.0], ...}
 ```
 
 ## build-table

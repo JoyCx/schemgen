@@ -143,12 +143,20 @@ pub fn prepare(raw: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Reduce an arbitrary schematic name to a safe `*.litematic` file name.
+/// Names Windows reserves for devices, whatever the extension.
+const RESERVED_NAMES: &[&str] = &[
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+];
+
+/// Reduce an arbitrary schematic name to a safe file name ending in
+/// `.{extension}`.
 ///
 /// Illegal characters are replaced *before* any path parsing, so both path
 /// separators are gone by then — no input can escape the chosen folder, and a
-/// name like `a:b` is not mistaken for a Windows drive prefix.
-pub fn sanitize_filename(name: &str) -> String {
+/// name like `a:b` is not mistaken for a Windows drive prefix. Device names
+/// Windows reserves (`con`, `nul`, …) get a leading underscore.
+pub fn sanitize_filename(name: &str, extension: &str) -> String {
     let mut cleaned: String = name
         .trim()
         .chars()
@@ -167,20 +175,33 @@ pub fn sanitize_filename(name: &str) -> String {
     if cleaned.is_empty() {
         cleaned = "schematic".to_string();
     }
-    if !cleaned.to_lowercase().ends_with(".litematic") {
-        cleaned.push_str(".litematic");
+    let suffix = format!(".{extension}");
+    if !cleaned.to_lowercase().ends_with(&suffix) {
+        cleaned.push_str(&suffix);
+    }
+    let device = cleaned
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if RESERVED_NAMES.contains(&device.as_str()) {
+        cleaned.insert(0, '_');
     }
     cleaned
 }
 
-/// Append `-2`, `-3`, … until the name is unused within `taken` (case-insensitive).
-/// Used to keep two same-named models in one batch from clobbering each other.
+/// Append `-2`, `-3`, … to the stem until the name is unused within `taken`
+/// (case-insensitive). Keeps two same-named models in one batch from
+/// clobbering each other.
 pub fn dedupe_filename(filename: &str, taken: &mut HashSet<String>) -> String {
-    let stem = filename.strip_suffix(".litematic").unwrap_or(filename);
+    let (stem, ext) = match filename.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem, format!(".{ext}")),
+        _ => (filename, String::new()),
+    };
     let mut candidate = filename.to_string();
     let mut n = 2;
     while !taken.insert(candidate.to_lowercase()) {
-        candidate = format!("{stem}-{n}.litematic");
+        candidate = format!("{stem}-{n}{ext}");
         n += 1;
     }
     candidate
@@ -282,14 +303,34 @@ pub fn reveal_dir(dir: &Path) -> Result<(), String> {
         .map_err(|e| format!("Could not open the file manager: {e}"))
 }
 
-/// Likely Litematica schematic folders for this platform, each flagged with
-/// whether it already exists, so the UI can offer them as one-click choices.
+/// A launcher instance a suggested folder belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Instance {
+    /// The instance's folder name, which launchers use as its display name.
+    pub name: String,
+    pub launcher: &'static str,
+    /// The Minecraft version it runs, when its launcher records one.
+    pub mc_version: Option<String>,
+}
+
+/// A folder a UI can offer as a one-click output choice.
+#[derive(Debug, Clone)]
+pub struct Suggestion {
+    pub path: PathBuf,
+    pub exists: bool,
+    pub instance: Option<Instance>,
+}
+
 /// Scan a launcher's instance root, returning the `schematics` folder of every
 /// instance that actually has one. `inner` is the per-instance prefix the
 /// launcher puts the game directory under ("" for CurseForge, ".minecraft" for
 /// Prism/MultiMC). Instances without a schematics folder are skipped, so a
 /// launcher with 16 packs does not bury the real answers.
-fn instance_schematics(root: &Path, inner: &str) -> Vec<PathBuf> {
+fn instance_schematics(
+    root: &Path,
+    launcher: &'static str,
+    inner: &str,
+) -> Vec<(PathBuf, Instance)> {
     let mut found = Vec::new();
     let Ok(entries) = std::fs::read_dir(root) else {
         return found;
@@ -298,82 +339,152 @@ fn instance_schematics(root: &Path, inner: &str) -> Vec<PathBuf> {
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             continue;
         }
-        let mut dir = entry.path();
-        if !inner.is_empty() {
-            dir = dir.join(inner);
-        }
-        let schem = dir.join("schematics");
+        let dir = entry.path();
+        let game = if inner.is_empty() {
+            dir.clone()
+        } else {
+            dir.join(inner)
+        };
+        let schem = game.join("schematics");
         if schem.is_dir() {
-            found.push(schem);
+            found.push((
+                schem,
+                Instance {
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    launcher,
+                    mc_version: instance_version(&dir),
+                },
+            ));
         }
     }
-    found.sort();
+    found.sort_by(|a, b| a.0.cmp(&b.0));
     found
 }
 
-pub fn suggestions() -> Vec<(PathBuf, bool)> {
-    let mut paths: Vec<PathBuf> = Vec::new();
+fn read_json(path: &Path) -> Option<serde_json::Value> {
+    let meta = std::fs::metadata(path).ok()?;
+    if meta.len() > 4 * 1024 * 1024 {
+        return None;
+    }
+    serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+}
+
+/// The Minecraft version an instance folder records, whichever launcher
+/// made it: Prism Launcher and MultiMC in `mmc-pack.json`, CurseForge in
+/// `minecraftinstance.json`, the Modrinth App's older profiles in
+/// `profile.json`.
+fn instance_version(dir: &Path) -> Option<String> {
+    let text = |v: &serde_json::Value| v.as_str().map(str::to_string);
+    if let Some(pack) = read_json(&dir.join("mmc-pack.json")) {
+        let minecraft = pack["components"]
+            .as_array()?
+            .iter()
+            .find(|c| c["uid"] == "net.minecraft")?;
+        return text(&minecraft["version"]);
+    }
+    if let Some(cf) = read_json(&dir.join("minecraftinstance.json")) {
+        return text(&cf["gameVersion"]).or_else(|| text(&cf["baseModLoader"]["minecraftVersion"]));
+    }
+    let profile = read_json(&dir.join("profile.json"))?;
+    text(&profile["metadata"]["game_version"]).or_else(|| text(&profile["game_version"]))
+}
+
+/// Likely Litematica schematic folders for this platform, each flagged with
+/// whether it already exists and, for launcher instances, which instance and
+/// Minecraft version it belongs to — so a UI can offer them as one-click
+/// choices and suggest the matching target.
+pub fn suggestions() -> Vec<Suggestion> {
+    // Vanilla folders, then every launcher instance, then Downloads.
+    let mut vanilla: Vec<PathBuf> = Vec::new();
+    let mut instances: Vec<(PathBuf, Instance)> = Vec::new();
+    let mut scan = |root: PathBuf, launcher: &'static str, inner: &str| {
+        instances.extend(instance_schematics(&root, launcher, inner));
+    };
+    let mut downloads = None;
 
     if cfg!(windows) {
         if let Ok(appdata) = std::env::var("APPDATA") {
             let appdata = PathBuf::from(appdata);
-            paths.push(appdata.join(".minecraft").join("schematics"));
+            vanilla.push(appdata.join(".minecraft").join("schematics"));
             // Prism and MultiMC keep the game dir under <instance>/.minecraft.
-            paths.extend(instance_schematics(
-                &appdata.join("PrismLauncher").join("instances"),
+            scan(
+                appdata.join("PrismLauncher").join("instances"),
+                "Prism Launcher",
                 ".minecraft",
-            ));
-            paths.extend(instance_schematics(
-                &appdata.join("com.modrinth.theseus").join("profiles"),
+            );
+            scan(
+                appdata.join("com.modrinth.theseus").join("profiles"),
+                "Modrinth App",
                 "",
-            ));
+            );
+            scan(
+                appdata.join("ModrinthApp").join("profiles"),
+                "Modrinth App",
+                "",
+            );
         }
     }
     if let Some(home) = home_dir() {
         if cfg!(target_os = "macos") {
-            paths.push(
-                home.join("Library")
-                    .join("Application Support")
-                    .join("minecraft")
-                    .join("schematics"),
+            let support = home.join("Library").join("Application Support");
+            vanilla.push(support.join("minecraft").join("schematics"));
+            scan(
+                support.join("PrismLauncher").join("instances"),
+                "Prism Launcher",
+                ".minecraft",
+            );
+            scan(
+                support.join("ModrinthApp").join("profiles"),
+                "Modrinth App",
+                "",
             );
         }
         if cfg!(not(windows)) {
-            paths.push(home.join(".minecraft").join("schematics"));
-            paths.extend(instance_schematics(
-                &home
-                    .join(".local")
-                    .join("share")
-                    .join("PrismLauncher")
-                    .join("instances"),
+            vanilla.push(home.join(".minecraft").join("schematics"));
+            let share = home.join(".local").join("share");
+            scan(
+                share.join("PrismLauncher").join("instances"),
+                "Prism Launcher",
                 ".minecraft",
-            ));
+            );
+            scan(
+                share.join("ModrinthApp").join("profiles"),
+                "Modrinth App",
+                "",
+            );
         }
         // CurseForge puts instances straight in the profile, with no inner
         // .minecraft — this is where most Litematica users actually are.
-        paths.extend(instance_schematics(
-            &home.join("curseforge").join("minecraft").join("Instances"),
+        scan(
+            home.join("curseforge").join("minecraft").join("Instances"),
+            "CurseForge",
             "",
-        ));
-        paths.extend(instance_schematics(
-            &home.join("MultiMC").join("instances"),
+        );
+        scan(
+            home.join("MultiMC").join("instances"),
+            "MultiMC",
             ".minecraft",
-        ));
-        paths.push(home.join("Downloads"));
+        );
+        downloads = Some(home.join("Downloads"));
     }
 
-    let mut seen = HashSet::new();
-    paths.retain(|p| seen.insert(p.clone()));
-    let mut out: Vec<(PathBuf, bool)> = paths
+    let ordered = vanilla
         .into_iter()
-        .map(|p| {
-            let exists = p.is_dir();
-            (p, exists)
+        .map(|p| (p, None))
+        .chain(instances.into_iter().map(|(p, i)| (p, Some(i))))
+        .chain(downloads.map(|p| (p, None)));
+    let mut seen = HashSet::new();
+    let mut out: Vec<Suggestion> = ordered
+        .filter(|(path, _)| seen.insert(path.clone()))
+        .map(|(path, instance)| Suggestion {
+            exists: path.is_dir(),
+            path,
+            instance,
         })
         .collect();
-    // Folders that exist first — a discovered instance beats a default that was
-    // never created. Order within each group is left as built.
-    out.sort_by_key(|(_, exists)| !*exists);
+    // Folders that exist first — a discovered instance beats a default that
+    // was never created. Order within each group is left as built.
+    out.sort_by_key(|s| !s.exists);
     out
 }
 
@@ -390,35 +501,70 @@ mod tests {
         std::fs::create_dir_all(root.join("packB").join("schematics")).unwrap();
         std::fs::create_dir_all(root.join("packC").join("mods")).unwrap();
         std::fs::write(root.join("notadir.txt"), b"x").unwrap();
+        // CurseForge records the version it runs.
+        std::fs::write(
+            root.join("packA").join("minecraftinstance.json"),
+            br#"{"name": "Pack A", "gameVersion": "1.20.1"}"#,
+        )
+        .unwrap();
 
-        let found = instance_schematics(&root, "");
+        let found = instance_schematics(&root, "CurseForge", "");
         assert_eq!(found.len(), 2, "{found:?}");
-        assert!(found.iter().all(|p| p.ends_with("schematics")));
-        assert!(found.iter().any(|p| p.starts_with(root.join("packA"))));
-        assert!(found.iter().any(|p| p.starts_with(root.join("packB"))));
+        assert!(found.iter().all(|(p, _)| p.ends_with("schematics")));
+        let (_, a) = found
+            .iter()
+            .find(|(p, _)| p.starts_with(root.join("packA")))
+            .unwrap();
+        assert_eq!(a.name, "packA");
+        assert_eq!(a.launcher, "CurseForge");
+        assert_eq!(a.mc_version.as_deref(), Some("1.20.1"));
+        let (_, b) = found
+            .iter()
+            .find(|(p, _)| p.starts_with(root.join("packB")))
+            .unwrap();
+        assert_eq!(b.mc_version, None);
 
-        // The inner-prefix form (Prism/MultiMC) only matches under .minecraft.
-        assert!(instance_schematics(&root, ".minecraft").is_empty());
+        // The inner-prefix form (Prism/MultiMC) only matches under .minecraft,
+        // and reads the version from mmc-pack.json.
+        assert!(instance_schematics(&root, "Prism Launcher", ".minecraft").is_empty());
         std::fs::create_dir_all(root.join("packD").join(".minecraft").join("schematics")).unwrap();
-        assert_eq!(instance_schematics(&root, ".minecraft").len(), 1);
+        std::fs::write(
+            root.join("packD").join("mmc-pack.json"),
+            br#"{"components": [{"uid": "org.lwjgl3", "version": "3.3.3"},
+                                {"uid": "net.minecraft", "version": "1.21.4"}]}"#,
+        )
+        .unwrap();
+        let prism = instance_schematics(&root, "Prism Launcher", ".minecraft");
+        assert_eq!(prism.len(), 1);
+        assert_eq!(prism[0].1.mc_version.as_deref(), Some("1.21.4"));
 
         // A missing root is not an error.
-        assert!(instance_schematics(&root.join("nope"), "").is_empty());
+        assert!(instance_schematics(&root.join("nope"), "CurseForge", "").is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn sanitizes_and_suffixes() {
-        assert_eq!(sanitize_filename("castle"), "castle.litematic");
-        assert_eq!(sanitize_filename("castle.litematic"), "castle.litematic");
-        assert_eq!(sanitize_filename("a:b?c"), "a_b_c.litematic");
-        assert_eq!(sanitize_filename("   "), "schematic.litematic");
+        assert_eq!(sanitize_filename("castle", "litematic"), "castle.litematic");
+        assert_eq!(
+            sanitize_filename("castle.litematic", "litematic"),
+            "castle.litematic"
+        );
+        assert_eq!(sanitize_filename("a:b?c", "litematic"), "a_b_c.litematic");
+        assert_eq!(sanitize_filename("   ", "litematic"), "schematic.litematic");
+        assert_eq!(sanitize_filename("castle", "schem"), "castle.schem");
+        assert_eq!(sanitize_filename("CON", "nbt"), "_CON.nbt");
+        assert_eq!(
+            sanitize_filename("nul.backup", "schem"),
+            "_nul.backup.schem"
+        );
+        assert_eq!(sanitize_filename("console", "nbt"), "console.nbt");
     }
 
     #[test]
     fn cannot_escape_the_chosen_folder() {
         for raw in ["../../evil", "..", "C:/Windows/system32/x", "sub/dir/name"] {
-            let out = sanitize_filename(raw);
+            let out = sanitize_filename(raw, "litematic");
             assert!(!out.chars().any(std::path::is_separator), "{raw} -> {out}");
             assert!(!out.starts_with('.'), "{raw} -> {out}");
             assert!(out.ends_with(".litematic"), "{raw} -> {out}");
@@ -431,6 +577,8 @@ mod tests {
         assert_eq!(dedupe_filename("a.litematic", &mut taken), "a.litematic");
         assert_eq!(dedupe_filename("a.litematic", &mut taken), "a-2.litematic");
         assert_eq!(dedupe_filename("a.litematic", &mut taken), "a-3.litematic");
+        assert_eq!(dedupe_filename("a.schem", &mut taken), "a.schem");
+        assert_eq!(dedupe_filename("a.schem", &mut taken), "a-2.schem");
     }
 
     #[test]

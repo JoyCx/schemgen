@@ -6,12 +6,13 @@ use std::time::Duration;
 
 use tokio::sync::Semaphore;
 
-use schemgen_core::{Palette, Settings};
+use schemgen_core::{PaletteSet, Settings};
 
 use crate::jobs::JobStore;
 
 pub struct AppState {
-    pub palette: Arc<Palette>,
+    /// The color table, and each target's palette from it.
+    pub palettes: Arc<PaletteSet>,
     pub jobs: JobStore,
     /// Uploaded models waiting to be converted.
     pub uploads: PathBuf,

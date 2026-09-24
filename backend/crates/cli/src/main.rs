@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-use schemgen_core::{color_table, Palette, Settings};
+use schemgen_core::{color_table, BlockVersions, PaletteSet, Settings};
 use schemgen_server::ServerConfig;
 
 mod args;
@@ -96,14 +96,10 @@ fn main() -> ExitCode {
             }
         }
 
-        "palette" => match load_palette(&args) {
-            Ok(palette) => {
-                convert::palette(&args, &palette);
-                ExitCode::SUCCESS
-            }
+        "palette" => match load_palette(&args).and_then(|p| convert::palette(&args, &p)) {
+            Ok(()) => ExitCode::SUCCESS,
             Err(e) => usage_error(&e, args::HELP),
         },
-
         "targets" => {
             convert::targets(&args);
             ExitCode::SUCCESS
@@ -152,9 +148,10 @@ fn main() -> ExitCode {
     }
 }
 
-/// The built-in palette, unless `--palette`, `SCHEMGEN_PALETTE` or a
-/// `SCHEMGEN_DATA_DIR` holding `color_table_safe.json` names another.
-fn load_palette(args: &args::ParsedArgs) -> Result<Palette, String> {
+/// The built-in color table, unless `--palette`, `SCHEMGEN_PALETTE` or a
+/// `SCHEMGEN_DATA_DIR` holding `color_table_safe.json` names another —
+/// with the built-in block versions deciding what each target may use.
+fn load_palette(args: &args::ParsedArgs) -> Result<PaletteSet, String> {
     let custom = args
         .get("palette")
         .map(PathBuf::from)
@@ -175,7 +172,7 @@ fn load_palette(args: &args::ParsedArgs) -> Result<Palette, String> {
         }
         None => color_table::builtin(),
     };
-    Palette::from_table(&table).map_err(|e| match &custom {
+    PaletteSet::new(table, BlockVersions::builtin()).map_err(|e| match &custom {
         Some(path) => format!("{}: {e}", path.display()),
         None => e.to_string(),
     })

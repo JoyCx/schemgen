@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use crate::formats::Format;
 use crate::targets::{Target, DEFAULT_TARGET};
 use crate::types::LightingOptions;
 
@@ -95,6 +96,8 @@ pub struct Settings {
     /// Minecraft version to write for: a game version such as `1.21.8`, or a
     /// bare data version. Decides the stamp and which blocks may be used.
     pub target: String,
+    /// File format: `litematic`, `schem`, `schem-v3` or `nbt`.
+    pub format: String,
     /// Name stored in the schematic; empty means the input file's stem.
     pub schematic_name: String,
     /// Memory budget for color sampling, in GB.
@@ -120,6 +123,7 @@ impl Default for Settings {
             highlight_recovery: 1.0,
             delight: 0.0,
             target: DEFAULT_TARGET.to_string(),
+            format: Format::Litematic.id().to_string(),
             schematic_name: String::new(),
             ram_limit: 4.0,
         }
@@ -172,6 +176,7 @@ impl Settings {
         self.delight = UNIT.clamp("delight", self.delight)?;
 
         self.target = Target::parse(&self.target)?.key();
+        self.format = Format::parse(&self.format)?.id().to_string();
         self.schematic_name = self
             .schematic_name
             .trim()
@@ -200,6 +205,12 @@ impl Settings {
     /// back to the default target when theirs does not parse.
     pub fn target(&self) -> Target {
         Target::parse(&self.target).unwrap_or_default()
+    }
+
+    /// The file format. Settings that were not normalized fall back to
+    /// `.litematic` when theirs does not parse.
+    pub fn format(&self) -> Format {
+        Format::parse(&self.format).unwrap_or(Format::Litematic)
     }
 
     /// The name to store in the schematic: the explicit one, else `fallback`
@@ -293,6 +304,10 @@ mod tests {
         }));
         assert!(bad(Settings {
             target: "1.12.2".into(),
+            ..Settings::default()
+        }));
+        assert!(bad(Settings {
+            format: "schematic".into(),
             ..Settings::default()
         }));
     }

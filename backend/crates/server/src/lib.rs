@@ -13,7 +13,7 @@ use std::time::Duration;
 use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 use tokio::sync::Semaphore;
 
-use schemgen_core::{Palette, Settings};
+use schemgen_core::{PaletteSet, Settings};
 
 mod error;
 mod guard;
@@ -41,7 +41,7 @@ pub struct ServerConfig {
     pub host: String,
     /// Port to bind; 0 lets the OS choose (the chosen one is printed).
     pub port: u16,
-    pub palette: Palette,
+    pub palettes: PaletteSet,
     /// Settings requests start from — notably the default target.
     pub defaults: Settings,
     /// Uploads and outputs live in `work_dir/uploads` and `work_dir/outputs`.
@@ -64,11 +64,11 @@ pub struct ServerConfig {
 }
 
 impl ServerConfig {
-    pub fn new(palette: Palette) -> Self {
+    pub fn new(palettes: PaletteSet) -> Self {
         Self {
             host: "127.0.0.1".to_string(),
             port: 3001,
-            palette,
+            palettes,
             defaults: Settings::default(),
             work_dir: default_work_dir(),
             ui_dir: None,
@@ -125,13 +125,14 @@ pub fn find_ui_dir() -> Option<PathBuf> {
 }
 
 /// The shared state for `config`, with its work folders created.
-pub fn build_state(config: &ServerConfig) -> std::io::Result<Arc<AppState>> {
+pub fn build_state(config: &mut ServerConfig) -> std::io::Result<Arc<AppState>> {
     let uploads = config.work_dir.join("uploads");
     let outputs = config.work_dir.join("outputs");
     std::fs::create_dir_all(&uploads)?;
     std::fs::create_dir_all(&outputs)?;
+    let palettes = std::mem::replace(&mut config.palettes, PaletteSet::builtin());
     Ok(Arc::new(AppState {
-        palette: Arc::new(config.palette.clone()),
+        palettes: Arc::new(palettes),
         jobs: jobs::JobStore::default(),
         uploads,
         outputs,
@@ -164,8 +165,8 @@ point <code>SCHEMGEN_UI_DIR</code> at a build.</p>";
 
 /// Run the server until it is stopped (Ctrl+C, or standard input closing
 /// with `exit_with_stdin`).
-pub async fn run(config: ServerConfig) -> std::io::Result<()> {
-    let state = build_state(&config)?;
+pub async fn run(mut config: ServerConfig) -> std::io::Result<()> {
+    let state = build_state(&mut config)?;
     sweep::spawn(Arc::clone(&state));
 
     let ui_dir = config.ui_dir.clone();

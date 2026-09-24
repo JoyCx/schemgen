@@ -11,6 +11,7 @@
 //! voxelize → sample colors → adjust → dither → match → BlockGrid → formats::*
 //! ```
 
+pub mod availability;
 pub mod blocks;
 pub mod color_table;
 pub mod dither;
@@ -26,7 +27,9 @@ pub mod thumbnail;
 pub mod types;
 pub mod voxelizer;
 
+pub use availability::{BlockVersions, PaletteSet};
 pub use error::{Error, Result};
+pub use formats::Format;
 pub use grid::{BlockGrid, Material};
 pub use palette::Palette;
 pub use pipeline::{run, Cancel, NoProgress, Progress, Stage};

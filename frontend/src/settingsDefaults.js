@@ -70,6 +70,7 @@ export function toApiSettings(settings = {}, { withOutput = false } = {}) {
     schematic_name: String(s.schematic_name || ''),
   }
   if (s.target) api.target = s.target
+  if (s.format) api.format = s.format
   if (withOutput) {
     const dir = s.auto_save ? String(s.output_dir || '').trim() : ''
     api.output_dir = dir || null

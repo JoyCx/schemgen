@@ -18,8 +18,8 @@ USAGE:
 
 COMMANDS:
     serve                     Start the HTTP API and web UI (default with no command)
-    convert <FILE>...         Convert models to .litematic without a server
-    palette                   Print the block palette
+    convert <FILE>...         Convert models to schematics without a server
+    palette                   Print the block palette (--target for another version)
     targets                   Print the Minecraft versions schematics can target
     schema                    Print the settings schema as JSON
     build-table <DIR> [OUT]   Rebuild the color table from a texture pack
@@ -66,7 +66,7 @@ Once it accepts connections the server prints one line to stdout:
 ";
 
 pub const HELP_CONVERT: &str = "\
-schemgen2 convert — convert models to .litematic without a server
+schemgen2 convert — convert models to schematics without a server
 
 USAGE:
     schemgen2 convert <FILE>... [OPTIONS]
@@ -76,6 +76,8 @@ OUTPUT:
     -d, --out-dir <DIR>       Write into this folder; ~ and %APPDATA% expand and
                               the folder is created if missing
     -n, --name <NAME>         Schematic name (default: the input file stem)
+    -f, --format <FORMAT>     litematic (default), schem (Sponge v2, WorldEdit/FAWE),
+                              schem-v3 (WorldEdit 7.3+) or nbt (structure blocks)
     With neither -o nor -d, the file lands next to its input.
 
 TARGET:
@@ -126,6 +128,7 @@ const VALUE_OPTS: &[&str] = &[
     "name",
     "target",
     "data-version",
+    "format",
     "max-size",
     "voxel-size",
     "ram-limit",
@@ -161,6 +164,7 @@ const SHORT_OPTS: &[(char, &str, bool)] = &[
     ('d', "out-dir", true),
     ('n', "name", true),
     ('t', "target", true),
+    ('f', "format", true),
     ('p', "port", true),
     ('q', "quiet", false),
     ('j', "json", false),
@@ -344,6 +348,7 @@ pub fn settings_from_args(args: &ParsedArgs) -> Result<Settings, String> {
         highlight_recovery: float("highlight-recovery", d.highlight_recovery)?,
         delight: float("delight", d.delight)?,
         target,
+        format: args.get("format").unwrap_or(&d.format).to_string(),
         schematic_name: String::new(),
     };
     settings.normalized().map_err(|e| e.to_string())
@@ -467,6 +472,23 @@ mod tests {
         );
         assert!(settings(&["convert", "m.glb", "--target", "1.8.9"]).is_err());
         assert!(settings(&["convert", "m.glb", "-t", "1.20.4", "--data-version", "3700"]).is_err());
+    }
+
+    #[test]
+    fn formats_are_checked() {
+        assert_eq!(
+            settings(&["convert", "m.glb", "-f", "schem"])
+                .unwrap()
+                .format,
+            "schem"
+        );
+        assert_eq!(
+            settings(&["convert", "m.glb", "--format", "NBT"])
+                .unwrap()
+                .format,
+            "nbt"
+        );
+        assert!(settings(&["convert", "m.glb", "--format", "mcedit"]).is_err());
     }
 
     #[test]

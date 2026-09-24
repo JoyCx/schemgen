@@ -13,7 +13,7 @@ use serde::Serialize;
 use tokio::sync::{watch, Semaphore};
 
 use schemgen_core::formats::{self, Metadata};
-use schemgen_core::{pipeline, thumbnail, Cancel, Material, Palette, Progress, Settings, Stage};
+use schemgen_core::{pipeline, thumbnail, Cancel, Material, PaletteSet, Progress, Settings, Stage};
 
 use crate::savedir;
 use crate::state::AppState;
@@ -122,7 +122,7 @@ impl Job {
         let id = uuid::Uuid::new_v4().to_string();
         let (state, _) = watch::channel(JobState::queued());
         Arc::new(Job {
-            output: outputs.join(format!("{id}.litematic")),
+            output: outputs.join(format!("{id}.{}", new.settings.format().extension())),
             thumbnail: outputs.join(format!("{id}.png")),
             id,
             created_ms: formats::now_ms(),
@@ -165,7 +165,7 @@ impl Job {
             input_name: self.input_name.clone(),
             name: self.name.clone(),
             download_name: self.file_name.clone(),
-            format: "litematic",
+            format: self.settings.format().id(),
             target: self.settings.target.clone(),
             created_ms: self.created_ms,
             finished_ms: state.finished_ms,
@@ -327,9 +327,9 @@ pub fn start(app: Arc<AppState>, jobs: Vec<Arc<Job>>, concurrency: usize) {
                 job.request_cancel();
                 return;
             }
-            let palette = Arc::clone(&app.palette);
+            let palettes = Arc::clone(&app.palettes);
             let worker = Arc::clone(&job);
-            let outcome = tokio::task::spawn_blocking(move || convert(&worker, &palette))
+            let outcome = tokio::task::spawn_blocking(move || convert(&worker, &palettes))
                 .await
                 .unwrap_or_else(|e| {
                     Err(schemgen_core::Error::Io(std::io::Error::other(format!(
@@ -342,32 +342,34 @@ pub fn start(app: Arc<AppState>, jobs: Vec<Arc<Job>>, concurrency: usize) {
 }
 
 /// The blocking part of a job: pipeline, file, thumbnail.
-fn convert(job: &Job, palette: &Palette) -> schemgen_core::Result<JobResult> {
+fn convert(job: &Job, palettes: &PaletteSet) -> schemgen_core::Result<JobResult> {
     let started = Instant::now();
+    let target = job.settings.target();
+    let palette = palettes.for_target(&target)?;
     let grid = pipeline::run(
         &job.upload,
         &job.settings,
-        palette,
+        &palette,
         &mut JobProgress { job },
     )?;
     if job.cancel.is_cancelled() {
         return Err(schemgen_core::Error::Cancelled);
     }
 
-    let target = job.settings.target();
+    let format = job.settings.format();
     job.update(|s| {
         s.progress = 92.0;
         s.stage = "write";
-        s.message = "Writing .litematic…".to_string();
+        s.message = format!("Writing .{}…", format.extension());
     });
-    formats::litematic::write(&job.output, &grid, &Metadata::new(&job.name), &target)?;
+    format.write(&job.output, &grid, &Metadata::new(&job.name), &target)?;
 
     job.update(|s| {
         s.progress = 96.0;
         s.stage = "thumbnail";
         s.message = "Rendering thumbnail…".to_string();
     });
-    let png = thumbnail::render_png(&grid, |n| palette.color_of(n), THUMBNAIL_SIZE);
+    let png = thumbnail::render_png(&grid, |n| palettes.color_of(n), THUMBNAIL_SIZE);
     if let Err(e) = std::fs::write(&job.thumbnail, png) {
         log::warn!("Job {}: could not save thumbnail: {e}", job.id);
     }

@@ -101,6 +101,18 @@ impl<W: Write> NbtWriter<W> {
         self.out.write_all(v)
     }
 
+    /// Open a byte array of `len` bytes, to be filled with [`Self::raw`] —
+    /// for arrays too large to build in memory first.
+    pub fn begin_byte_array(&mut self, name: &str, len: i32) -> io::Result<()> {
+        self.header(TAG_BYTE_ARRAY, name)?;
+        self.out.write_all(&len.to_be_bytes())
+    }
+
+    /// Payload bytes of an array opened with [`Self::begin_byte_array`].
+    pub fn raw(&mut self, bytes: &[u8]) -> io::Result<()> {
+        self.out.write_all(bytes)
+    }
+
     pub fn int_array(&mut self, name: &str, v: &[i32]) -> io::Result<()> {
         self.header(TAG_INT_ARRAY, name)?;
         self.len_prefix(v.len())?;

@@ -120,6 +120,18 @@ impl Target {
         ))
     }
 
+    /// The best target for a game version that may not have a row of its own:
+    /// the newest target that is not newer than it (`1.20.2` → `1.20.1`).
+    /// `None` for versions older than the floor or that do not parse.
+    pub fn for_game_version(version: &str) -> Option<Target> {
+        let wanted = version_key(version)?;
+        TARGETS
+            .iter()
+            .copied()
+            .filter(|t| version_key(t.id).is_some_and(|k| k <= wanted))
+            .max_by_key(|t| t.data_version)
+    }
+
     /// The target conversions use when none is given.
     pub fn default_target() -> Target {
         Target::named(DEFAULT_TARGET).expect("the default target is in the table")
@@ -134,6 +146,14 @@ impl Target {
             self.id.to_string()
         }
     }
+}
+
+/// `1.20.4` → `[1, 20, 4]`, `26.1` → `[26, 1]`: game versions compare as
+/// number sequences, and the year-based ones (26.x) come after every 1.x.
+/// Snapshot-style suffixes (`1.21.5-pre1`) are ignored.
+fn version_key(version: &str) -> Option<Vec<u32>> {
+    let core = version.trim().split(['-', ' ', '+']).next()?;
+    core.split('.').map(|p| p.parse().ok()).collect()
 }
 
 impl Default for Target {
@@ -166,6 +186,19 @@ mod tests {
     fn default_is_1_21_8() {
         let t = Target::default();
         assert_eq!((t.id, t.data_version), ("1.21.8", 4440));
+    }
+
+    #[test]
+    fn game_versions_map_to_the_newest_target_not_newer() {
+        let t = |v: &str| Target::for_game_version(v).map(|t| t.id);
+        assert_eq!(t("1.20.4"), Some("1.20.4"));
+        assert_eq!(t("1.20.2"), Some("1.20.1"));
+        assert_eq!(t("1.21.9"), Some("1.21.8"));
+        assert_eq!(t("1.21.5-pre1"), Some("1.21.5"));
+        assert_eq!(t("26.1.2"), Some("26.1"));
+        assert_eq!(t("27.1"), Some("26.3"));
+        assert_eq!(t("1.12.2"), None);
+        assert_eq!(t("latest"), None);
     }
 
     #[test]
