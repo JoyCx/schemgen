@@ -36,18 +36,12 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      # The integration tests start a real schemgen2 and convert a fixture,
-      # which goes through the Python voxelizer.
+      # The integration tests start a real schemgen2 the way the mod does and
+      # convert a fixture with it.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
-      - uses: actions/setup-python@v5
-        id: python
-        with:
-          python-version: '3.12'
-      - name: Install voxelizer dependencies
-        run: python -m pip install "trimesh[easy]" numpy scipy Pillow
       - name: Build the server
         working-directory: backend
         run: cargo build --release --locked -p schemgen2
@@ -55,7 +49,6 @@ jobs:
         working-directory: schemgen-mod
         env:
           SCHEMGEN_BINARY: ${{ github.workspace }}/backend/target/release/schemgen2
-          SCHEMGEN_PYTHON: ${{ steps.python.outputs.python-path }}
         run: ./gradlew --stacktrace :common:test
       - name: Upload test reports
         if: failure()

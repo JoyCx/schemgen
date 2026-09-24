@@ -91,12 +91,8 @@ dies (`--exit-with-stdin`). Where the program comes from, in order:
 > **Today:** no schemgen2 release exists yet and development builds pin no
 > checksums, so steps 2 and 3 cannot happen — set *schemgen2 program* to a
 > binary you built (`cargo build --release -p schemgen2` in `backend/`), or run
-> your own server. And schemgen2 2.0 still voxelizes through Python: it needs
-> Python with `trimesh` (`pip install "trimesh[easy]" numpy scipy Pillow`) and
-> the `backend/scripts` folder next to the binary or in its source tree. Set
-> *Python with trimesh* when `python3` (`python` on Windows) is not that
-> Python. Both requirements go away with the Rust voxelizer (roadmap Phase 4)
-> and the release packaging (Phase 6).
+> your own server. The binary is all it needs: it voxelizes in Rust, with no
+> Python and no files beside it.
 
 **My own.** Start a server yourself — on this computer or another one on your
 network — and enter its address, port and token:
@@ -136,7 +132,6 @@ the game directory; a file that cannot be parsed is renamed
 | `serverMode` | `"SIDECAR"` | `"SIDECAR"` (built in) or `"EXTERNAL"` (your own) |
 | `host`, `port`, `token` | `"127.0.0.1"`, `3001`, `""` | Your own server |
 | `binaryPath` | `""` | A schemgen2 to run instead of the bundled or downloaded one |
-| `pythonPath` | `""` | Passed to the built-in server as `SCHEMGEN_PYTHON` |
 | `outputFolder` | `""` → `schematics` | Where schematics are saved |
 | `modelsFolder` | `""` → `schemgen/models` | The folder the screen lists |
 | `targetOverride` | `""` → this game | A Minecraft version to convert for instead |
@@ -170,9 +165,6 @@ started for the address you entered: start it with `--host <that address>` or
 `--allow-host <that name>`. *Missing or wrong token* means the token does not
 match the server's `--token`. *Too old for the mod* means a schemgen2 from
 before API v2.
-
-**Conversions fail** with a Python error: the built-in server did not find a
-Python with `trimesh` — set *Python with trimesh* to one that has it.
 
 **Grey preview boxes** are blocks the server's palette has no color for.
 
@@ -233,17 +225,14 @@ The integration tests start a real server and convert
 `backend/fixtures/textured.glb`:
 
 ```bash
-SCHEMGEN_BINARY=../backend/target/release/schemgen2 \
-SCHEMGEN_PYTHON=/path/to/python-with-trimesh \
-./gradlew :common:test
+SCHEMGEN_BINARY=../backend/target/release/schemgen2 ./gradlew :common:test
 ```
 
-Without `SCHEMGEN_BINARY` they are skipped; without `SCHEMGEN_PYTHON` the
-conversion tests are.
+Without `SCHEMGEN_BINARY` they are skipped.
 
 CI (`.github/workflows/mod.yml`, on changes to `schemgen-mod/`, `backend/` or
-the workflow) runs the common tests with a freshly built server and Python,
-builds the jar for every version, and uploads the jars as artifacts.
+the workflow) runs the common tests with a freshly built server, builds the jar
+for every version, and uploads the jars as artifacts.
 
 ### Minecraft versions
 

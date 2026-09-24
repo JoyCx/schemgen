@@ -40,13 +40,6 @@ public final class ModConfig {
     public String binaryPath = "";
 
     /**
-     * Sidecar mode: the Python interpreter with trimesh the current server
-     * still voxelizes through, passed as {@code SCHEMGEN_PYTHON}. Goes away
-     * with the Rust voxelizer.
-     */
-    public String pythonPath = "";
-
-    /**
      * Where finished schematics go; blank is the instance's {@code schematics}
      * folder, a relative path is relative to the game directory.
      */
@@ -110,7 +103,6 @@ public final class ModConfig {
         out.port = port >= 1 && port <= 65535 ? port : defaults.port;
         out.token = orDefault(token, "");
         out.binaryPath = pathOrBlank(binaryPath);
-        out.pythonPath = orDefault(pythonPath, "");
         out.outputFolder = pathOrBlank(outputFolder);
         out.modelsFolder = pathOrBlank(modelsFolder);
         out.targetOverride = orDefault(targetOverride, "");

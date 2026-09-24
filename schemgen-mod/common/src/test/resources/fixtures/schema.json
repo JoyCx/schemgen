@@ -329,6 +329,33 @@
       "type": "choice"
     },
     {
+      "choices": [
+        {
+          "label": "Litematica (.litematic)",
+          "value": "litematic"
+        },
+        {
+          "label": "WorldEdit (.schem, Sponge v2)",
+          "value": "schem"
+        },
+        {
+          "label": "WorldEdit 7.3+ (.schem, Sponge v3)",
+          "value": "schem-v3"
+        },
+        {
+          "label": "Structure block (.nbt)",
+          "value": "nbt"
+        }
+      ],
+      "default": "litematic",
+      "group": "output",
+      "help": "Litematica's .litematic; .schem for WorldEdit and FAWE (v2 reads everywhere, v3 needs WorldEdit 7.3+); .nbt for structure blocks and /place template.",
+      "key": "format",
+      "label": "File format",
+      "scope": "conversion",
+      "type": "choice"
+    },
+    {
       "default": "",
       "group": "output",
       "help": "Name stored in the schematic and used for its file. Empty uses the model's file name.",
@@ -382,7 +409,26 @@
     }
   ],
   "formats": [
-    "litematic"
+    {
+      "extension": "litematic",
+      "id": "litematic",
+      "label": "Litematica (.litematic)"
+    },
+    {
+      "extension": "schem",
+      "id": "schem",
+      "label": "WorldEdit (.schem, Sponge v2)"
+    },
+    {
+      "extension": "schem",
+      "id": "schem-v3",
+      "label": "WorldEdit 7.3+ (.schem, Sponge v3)"
+    },
+    {
+      "extension": "nbt",
+      "id": "nbt",
+      "label": "Structure block (.nbt)"
+    }
   ],
   "groups": [
     {
@@ -421,81 +467,97 @@
   },
   "targets": [
     {
+      "blocks": 181,
       "data_version": 5023,
       "id": "26.3",
       "schematic_version": 7
     },
     {
+      "blocks": 181,
       "data_version": 4903,
       "id": "26.2",
       "schematic_version": 7
     },
     {
+      "blocks": 181,
       "data_version": 4786,
       "id": "26.1",
       "schematic_version": 7
     },
     {
+      "blocks": 181,
       "data_version": 4671,
       "id": "1.21.11",
       "schematic_version": 7
     },
     {
+      "blocks": 181,
       "data_version": 4556,
       "id": "1.21.10",
       "schematic_version": 7
     },
     {
+      "blocks": 181,
       "data_version": 4440,
       "id": "1.21.8",
       "schematic_version": 7
     },
     {
+      "blocks": 181,
       "data_version": 4325,
       "id": "1.21.5",
       "schematic_version": 7
     },
     {
+      "blocks": 181,
       "data_version": 4189,
       "id": "1.21.4",
       "schematic_version": 7
     },
     {
+      "blocks": 178,
       "data_version": 3955,
       "id": "1.21.1",
       "schematic_version": 7
     },
     {
+      "blocks": 170,
       "data_version": 3839,
       "id": "1.20.6",
       "schematic_version": 6
     },
     {
+      "blocks": 170,
       "data_version": 3700,
       "id": "1.20.4",
       "schematic_version": 6
     },
     {
+      "blocks": 170,
       "data_version": 3465,
       "id": "1.20.1",
       "schematic_version": 6
     },
     {
+      "blocks": 170,
       "data_version": 3337,
       "id": "1.19.4",
       "schematic_version": 6
     },
     {
+      "blocks": 162,
       "data_version": 2975,
       "id": "1.18.2",
       "schematic_version": 6
     },
     {
+      "blocks": 162,
       "data_version": 2730,
       "id": "1.17.1",
       "schematic_version": 6
     },
     {
+      "blocks": 137,
       "data_version": 2586,
       "id": "1.16.5",
       "schematic_version": 6

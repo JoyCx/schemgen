@@ -5,7 +5,6 @@ import io.github.joycx.schemgen.common.config.ServerMode;
 import io.github.joycx.schemgen.common.model.Health;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -99,8 +98,7 @@ public final class BackendService implements AutoCloseable {
         }
         ServerBinaries.Found found = (ServerBinaries.Found) resolution;
         log.accept("Starting the SchemGen server (" + found.origin() + "): " + found.binary());
-        Map<String, String> env = c.pythonPath.isBlank() ? Map.of() : Map.of("SCHEMGEN_PYTHON", c.pythonPath);
-        sidecar = launcher.launch(found.binary(), gameDir.resolve("schemgen").resolve("work"), env);
+        sidecar = launcher.launch(found.binary(), gameDir.resolve("schemgen").resolve("work"));
         check(sidecar.client().health(), sidecar.uri().toString());
         return sidecar.client();
     }

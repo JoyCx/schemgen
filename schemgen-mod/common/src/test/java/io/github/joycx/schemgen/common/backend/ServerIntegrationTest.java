@@ -31,14 +31,10 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The mod's backend layer against a real schemgen2, started the way the mod
  * starts it: sidecar mode, a fresh token, {@code --port 0}. Runs when
- * {@code SCHEMGEN_BINARY} names the binary; the conversions also need
- * {@code SCHEMGEN_PYTHON}, an interpreter with trimesh, until the server's
- * voxelizer no longer uses Python.
+ * {@code SCHEMGEN_BINARY} names the binary.
  */
 @EnabledIfEnvironmentVariable(named = "SCHEMGEN_BINARY", matches = ".+")
 class ServerIntegrationTest {
-    private static final String PYTHON = System.getenv("SCHEMGEN_PYTHON");
-
     @TempDir
     static Path gameDir;
 
@@ -51,7 +47,6 @@ class ServerIntegrationTest {
         ModConfig config = new ModConfig();
         config.serverMode = ServerMode.SIDECAR;
         config.binaryPath = System.getenv("SCHEMGEN_BINARY");
-        config.pythonPath = PYTHON == null ? "" : PYTHON;
         ServerBinaries binaries = new ServerBinaries(null, Platform.current(), path -> null, (uri, target) -> {
             throw new AssertionError("the configured binary is used, nothing is downloaded");
         });
@@ -109,7 +104,6 @@ class ServerIntegrationTest {
     }
 
     @Test
-    @EnabledIfEnvironmentVariable(named = "SCHEMGEN_PYTHON", matches = ".+")
     void convertsFollowsDownloadsAndForgets() throws Exception {
         Path out = gameDir.resolve("schematics");
         List<Job> updates = new CopyOnWriteArrayList<>();
@@ -151,7 +145,6 @@ class ServerIntegrationTest {
     }
 
     @Test
-    @EnabledIfEnvironmentVariable(named = "SCHEMGEN_PYTHON", matches = ".+")
     void previewsComeBackAsBlocks() throws Exception {
         PreviewData preview = client.preview(fixture("textured.glb"), settings().toPreviewJson(16));
 
@@ -165,7 +158,6 @@ class ServerIntegrationTest {
     }
 
     @Test
-    @EnabledIfEnvironmentVariable(named = "SCHEMGEN_PYTHON", matches = ".+")
     void aRunningJobCanBeCancelled() throws Exception {
         // At 512 blocks the job runs for seconds; the cancel arrives within milliseconds.
         SettingsModel big = settings();

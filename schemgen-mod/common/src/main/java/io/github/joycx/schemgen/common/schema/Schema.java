@@ -18,7 +18,7 @@ public record Schema(
         List<Field> fields,
         List<Target> targets,
         @SerializedName("default_target") String defaultTarget,
-        List<String> formats,
+        List<Format> formats,
         PaletteSummary palette,
         Limits limits) {
 

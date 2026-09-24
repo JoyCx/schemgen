@@ -43,7 +43,6 @@ public final class ServerSettingsScreen extends Screen {
     private TextFieldWidget port;
     private TextFieldWidget token;
     private TextFieldWidget binary;
-    private TextFieldWidget python;
     private TextFieldWidget models;
     private TextFieldWidget output;
     private int errorY;
@@ -59,7 +58,7 @@ public final class ServerSettingsScreen extends Screen {
     @Override
     protected void init() {
         labels.clear();
-        host = port = token = binary = python = null;
+        host = port = token = binary = null;
         int column = Math.min(200, (width - 3 * PAD) / 2);
         int leftX = width / 2 - PAD / 2 - column;
         int rightX = width / 2 + PAD / 2;
@@ -92,10 +91,6 @@ public final class ServerSettingsScreen extends Screen {
             label("schemgen.server.binary", leftX, left, GRAY);
             left += LABEL;
             binary = field(leftX, left, column, draft.binaryPath, Text.translatable("schemgen.server.binary.default").getString());
-            left += ROW + GAP;
-            label("schemgen.server.python", leftX, left, GRAY);
-            left += LABEL;
-            python = field(leftX, left, column, draft.pythonPath, Text.translatable("schemgen.server.python.default").getString());
         }
         left += ROW + GAP;
 
@@ -180,7 +175,6 @@ public final class ServerSettingsScreen extends Screen {
         }
         if (binary != null) {
             draft.binaryPath = binary.getText().strip();
-            draft.pythonPath = python.getText().strip();
         }
         draft.modelsFolder = models.getText().strip();
         draft.outputFolder = output.getText().strip();
@@ -201,8 +195,7 @@ public final class ServerSettingsScreen extends Screen {
                 || !draft.host.equals(current.host)
                 || draft.port != current.port
                 || !draft.token.equals(current.token)
-                || !draft.binaryPath.equals(current.binaryPath)
-                || !draft.pythonPath.equals(current.pythonPath);
+                || !draft.binaryPath.equals(current.binaryPath);
         session.updateConfig(draft, serverChanged);
         close();
     }

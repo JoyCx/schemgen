@@ -29,6 +29,9 @@ public final class SettingsModel {
      */
     private static final Set<String> NOT_REMEMBERED = Set.of("target", "schematic_name");
 
+    /** The file format the mod asks for: Litematica's, since that is where the result goes. */
+    public static final String FORMAT = "litematic";
+
     private final Schema schema;
     private final Map<String, JsonElement> values = new LinkedHashMap<>();
 
@@ -185,6 +188,9 @@ public final class SettingsModel {
     public JsonObject toJson() {
         JsonObject out = new JsonObject();
         values.forEach((key, value) -> out.add(key, value.deepCopy()));
+        if (schema.field("format").isPresent()) {
+            out.addProperty("format", FORMAT);
+        }
         return out;
     }
 

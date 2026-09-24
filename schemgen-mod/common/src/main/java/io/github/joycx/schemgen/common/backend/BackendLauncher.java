@@ -14,7 +14,6 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -142,15 +141,12 @@ public final class BackendLauncher {
     /**
      * Start {@code binary} and wait until it answers its health check.
      *
-     * @param environment extra variables, e.g. {@code SCHEMGEN_PYTHON}
      * @throws BackendException "SchemGen server did not start: …" with the reason
      */
-    public Sidecar launch(Path binary, Path workDir, Map<String, String> environment)
-            throws IOException, InterruptedException {
+    public Sidecar launch(Path binary, Path workDir) throws IOException, InterruptedException {
         Files.createDirectories(workDir);
         String token = newToken();
-        Map<String, String> env = new HashMap<>(environment);
-        env.put("SCHEMGEN_TOKEN", token);
+        Map<String, String> env = Map.of("SCHEMGEN_TOKEN", token);
         List<String> command = List.of(binary.toString(), "serve", "--port", "0", "--exit-with-stdin",
                 "--work-dir", workDir.toString(), "--job-ttl", "24");
 

@@ -49,8 +49,7 @@ class BackendLauncherTest {
         process.stderr.println("[INFO] starting 4 workers");
         Recorder starter = new Recorder(process);
 
-        Sidecar sidecar = launcher(starter, Duration.ofSeconds(5)).launch(Path.of("/opt/schemgen2"), dir,
-                Map.of("SCHEMGEN_PYTHON", "/venv/bin/python"));
+        Sidecar sidecar = launcher(starter, Duration.ofSeconds(5)).launch(Path.of("/opt/schemgen2"), dir);
 
         assertEquals(health.uri(), sidecar.uri());
         assertEquals(List.of("/opt/schemgen2", "serve", "--port", "0", "--exit-with-stdin",
@@ -59,7 +58,7 @@ class BackendLauncherTest {
         assertTrue(token.matches("[0-9a-f]{64}"), token);
         assertEquals(token, sidecar.token());
         assertFalse(String.join(" ", starter.command).contains(token), "never on the command line");
-        assertEquals("/venv/bin/python", starter.environment.get("SCHEMGEN_PYTHON"));
+        assertEquals(Map.of("SCHEMGEN_TOKEN", token), starter.environment, "nothing else is added");
         assertTrue(sidecar.isAlive());
         eventually(() -> log.contains("some banner") && log.contains("[INFO] starting 4 workers"));
 
@@ -75,7 +74,7 @@ class BackendLauncherTest {
         process.stderr.println("[WARN] still thinking");
 
         BackendException e = assertThrows(BackendException.class,
-                () -> launcher(new Recorder(process), Duration.ofMillis(300)).launch(Path.of("s"), dir, Map.of()));
+                () -> launcher(new Recorder(process), Duration.ofMillis(300)).launch(Path.of("s"), dir));
 
         assertEquals("SchemGen server did not start: it printed no address within 0.3 s ([WARN] still thinking)",
                 e.getMessage());
@@ -91,7 +90,7 @@ class BackendLauncherTest {
         process.exit(2);
 
         BackendException e = assertThrows(BackendException.class,
-                () -> launcher(new Recorder(process), Duration.ofSeconds(5)).launch(Path.of("s"), dir, Map.of()));
+                () -> launcher(new Recorder(process), Duration.ofSeconds(5)).launch(Path.of("s"), dir));
 
         assertEquals("SchemGen server did not start: it exited with code 2 (error: --work-dir: permission denied)",
                 e.getMessage());
@@ -103,7 +102,7 @@ class BackendLauncherTest {
             throw new IOException("Cannot run program \"s\": error=13, Permission denied");
         };
         BackendException e = assertThrows(BackendException.class,
-                () -> launcher(broken, Duration.ofSeconds(1)).launch(Path.of("s"), dir, Map.of()));
+                () -> launcher(broken, Duration.ofSeconds(1)).launch(Path.of("s"), dir));
         assertEquals("SchemGen server did not start: Cannot run program \"s\": error=13, Permission denied",
                 e.getMessage());
     }
@@ -116,7 +115,7 @@ class BackendLauncherTest {
             process.stdout.println("listening " + sick.uri());
 
             BackendException e = assertThrows(BackendException.class,
-                    () -> launcher(new Recorder(process), Duration.ofSeconds(5)).launch(Path.of("s"), dir, Map.of()));
+                    () -> launcher(new Recorder(process), Duration.ofSeconds(5)).launch(Path.of("s"), dir));
 
             assertEquals("SchemGen server did not start: it did not answer its health check: warming up",
                     e.getMessage());

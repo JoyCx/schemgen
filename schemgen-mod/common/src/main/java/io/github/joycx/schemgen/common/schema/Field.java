@@ -57,9 +57,11 @@ public record Field(
      * Whether the mod shows and sends this field. Job-scope fields
      * ({@code output_dir}, {@code threads}) only matter to batches and to the
      * server's own copy of the file; the mod converts one model at a time and
-     * saves the download itself. Types this build does not know are skipped.
+     * saves the download itself. {@code format} is not the player's to pick:
+     * the mod places what it makes in Litematica, so it always asks for a
+     * {@code .litematic}. Types this build does not know are skipped.
      */
     public boolean isUsedByMod() {
-        return type != null && type != FieldType.FOLDER && scope != Scope.JOB;
+        return type != null && type != FieldType.FOLDER && scope != Scope.JOB && !"format".equals(key);
     }
 }

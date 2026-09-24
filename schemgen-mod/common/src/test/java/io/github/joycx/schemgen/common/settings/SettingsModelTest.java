@@ -80,7 +80,8 @@ class SettingsModelTest {
         JsonObject json = model.toJson();
         assertFalse(json.has("output_dir"));
         assertFalse(json.has("threads"));
-        assertEquals(18, json.size());
+        assertEquals("litematic", json.get("format").getAsString(), "for Litematica, whatever the server's default");
+        assertEquals(19, json.size());
         assertTrue(json.get("voxel_size").isJsonNull(), "null is sent, meaning derive it");
         assertEquals(field("light_dir").defaultValue(), json.get("light_dir"));
         json.addProperty("max_size", 1);

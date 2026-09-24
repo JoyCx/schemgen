@@ -74,8 +74,6 @@
   "schemgen.server.token.none": "none",
   "schemgen.server.binary": "schemgen2 program",
   "schemgen.server.binary.default": "bundled or downloaded",
-  "schemgen.server.python": "Python with trimesh",
-  "schemgen.server.python.default": "python3 (python on Windows)",
   "schemgen.server.models": "Models folder",
   "schemgen.server.output": "Schematics folder",
   "schemgen.server.autoload": "Place results in Litematica: %s",

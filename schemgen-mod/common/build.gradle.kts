@@ -32,11 +32,9 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.test {
     useJUnitPlatform()
-    // ServerIntegrationTest runs against a real schemgen2 only when these are
-    // set; declaring them as inputs makes setting one re-run the tests.
-    for (name in listOf("SCHEMGEN_BINARY", "SCHEMGEN_PYTHON")) {
-        inputs.property(name, providers.environmentVariable(name).orElse(""))
-    }
+    // ServerIntegrationTest runs against a real schemgen2 only when this is
+    // set; declaring it as an input makes setting it re-run the tests.
+    inputs.property("SCHEMGEN_BINARY", providers.environmentVariable("SCHEMGEN_BINARY").orElse(""))
     // The GLB models the backend's own tests convert.
     systemProperty("schemgen.fixtures", rootDir.parentFile.resolve("backend/fixtures").path)
     testLogging {

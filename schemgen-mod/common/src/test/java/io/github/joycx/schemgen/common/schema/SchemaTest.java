@@ -80,18 +80,20 @@ class SchemaTest {
         assertTrue(schema.targets().contains(new Target("1.21.8", 4440, 7)));
         assertTrue(schema.targets().contains(new Target("1.16.5", 2586, 6)));
         assertEquals("1.21.8", schema.defaultTarget());
-        assertEquals(List.of("litematic"), schema.formats());
+        assertEquals(List.of("litematic", "schem", "schem-v3", "nbt"), schema.formats().stream().map(Format::id).toList());
+        assertEquals(new Format("litematic", "Litematica (.litematic)", "litematic"), schema.formats().get(0));
         assertEquals(181, schema.palette().entries());
         assertEquals(1L << 30, schema.limits().maxUploadBytes());
     }
 
     @Test
-    void theModShowsNeitherFoldersNorJobFields() {
+    void theModShowsNoFolderJobOrFormatField() {
         Field folder = schema.field("output_dir").orElseThrow();
         assertEquals(FieldType.FOLDER, folder.type());
         assertEquals(Scope.JOB, folder.scope());
         assertFalse(folder.isUsedByMod());
         assertFalse(schema.field("threads").orElseThrow().isUsedByMod());
+        assertFalse(schema.field("format").orElseThrow().isUsedByMod(), "always .litematic");
 
         Group output = schema.groups().get(4);
         assertEquals(List.of("schematic_name"), schema.fieldsIn(output).stream().map(Field::key).toList());
