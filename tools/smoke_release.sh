@@ -17,7 +17,8 @@ cleanup() {
     wait "$server" 2>/dev/null || true
   fi
   cd /
-  rm -rf "$work"
+  # Best effort: a file the server just let go of may still be locked on Windows.
+  rm -rf "$work" || true
 }
 trap cleanup EXIT
 cd "$work"
