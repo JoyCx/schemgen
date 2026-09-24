@@ -240,17 +240,18 @@ for every version, and uploads the jars as artifacts.
 |---|---|---|---|---|
 | 1.21.1 | 1.21.1+build.3 | 0.116.17+1.21.1 | 0.19.58 | 0.21.8 |
 | 1.21.4 | 1.21.4+build.8 | 0.119.4+1.21.4 | 0.21.3 | 0.23.3 |
-| **1.21.8** (active) | 1.21.8+build.1 | 0.136.1+1.21.8 | 0.23.4 | 0.25.4 |
-| 1.21.11 | 1.21.11+build.3 | 0.141.6+1.21.11 | 0.26.3 | 0.27.7 |
+| **1.21.8** (active) | 1.21.8+build.1 | 0.136.1+1.21.8 | 0.23.7 | 0.25.7 |
+| 1.21.11 | 1.21.11+build.3 | 0.141.6+1.21.11 | 0.26.11 | 0.27.16 |
 
 Shared: Fabric Loader 0.18.4 to build against (the jar asks for 0.16 or
 later), Loom 1.13.6 (the newest line on Gradle 8), Stonecutter 0.7.11 (0.8 and
 later need Gradle 9). Litematica and MaLiLib are compile-only: the mod never
-needs them at run time. They come from Modrinth's Maven, which knows only the
-builds published on Modrinth (1.21.8 has 0.23.4 but no 0.23.3, 1.21.11 has
-0.26.3 but no 0.26.6) and does not resolve every build's version number: for
-1.21.8 and 1.21.11 the properties name Modrinth's version IDs instead, with the
-build they stand for in a comment.
+needs them at run time. They come from Modrinth's Maven, which serves only the
+builds Modrinth *lists* — and Litematica's maintainers unlist superseded builds
+on some lines (for 1.21.8 only 0.23.7 is listed). When a pin stops resolving
+(`Could not find maven.modrinth:litematica:…`), pick a listed build;
+`https://api.modrinth.com/v2/project/litematica/version?game_versions=["1.21.8"]`
+lists them with their status.
 
 [Stonecutter](https://stonecutter.kikugie.dev/) builds each version from one
 `fabric/src`, which is written for the **active** version, 1.21.8. Code for
@@ -375,9 +376,10 @@ Litematica's sources or Fabric's documentation examples (`FabricMC/fabric-docs`)
 The Yarn builds for 1.21.4 and 1.21.8 are the ones Litematica's own builds
 use; those for 1.21.1 and 1.21.11 the ones other published mods and the Fabric
 documentation use. The Litematica and MaLiLib sources were read at the tags
-above; for 1.21.8 and 1.21.11 the build compiles against the nearest builds on
-Modrinth (Litematica 0.23.4, 0.26.3; MaLiLib 0.27.7), whose placement and
-message APIs are the same. The Stonecutter comments were
+above; for 1.21.8 and 1.21.11 the build compiles against the nearest builds
+Modrinth lists (Litematica 0.23.7 and 0.26.11, MaLiLib 0.25.7 and 0.27.16),
+and CI's compile is what checks their APIs still match. The Stonecutter
+comments were
 run through Stonecutter 0.7.11 itself for all four versions, and each
 version's processed sources parse. The `bundleServerBinaries` task was run in
 a scratch project with binaries, checksums, and both kinds of bad input.
