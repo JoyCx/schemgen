@@ -1,8 +1,9 @@
 .gradle/
+# Also holds Stonecutter's processed sources (build/stonecutter-cache).
 build/
-# Loom's dev-client folder (shared by every Minecraft version).
+# Loom's development clients (fabric/versions/<version>/run).
 run/
-# Stonecutter's caches and IDE files.
+# IDE files.
 .idea/
 *.iml
 out/
