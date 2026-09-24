@@ -255,7 +255,12 @@ builds Modrinth *lists* — and Litematica's maintainers unlist superseded build
 on some lines (for 1.21.8 only 0.23.7 is listed). When a pin stops resolving
 (`Could not find maven.modrinth:litematica:…`), pick a listed build;
 `https://api.modrinth.com/v2/project/litematica/version?game_versions=["1.21.8"]`
-lists them with their status.
+lists them with their status. Their recent builds are also made with a newer
+Loom (1.14 to 1.17) than this build's 1.13, and Loom refuses to remap a jar
+stamped with a newer version of itself — a guard for running it, which the mod
+never does — so `compileOnlyMod` in `fabric/build.gradle.kts` compiles against
+copies without that stamp. Gradle 9 and a current Loom, needed for 26.x anyway,
+make the copies unnecessary.
 
 [Stonecutter](https://stonecutter.kikugie.dev/) builds each version from one
 `fabric/src`, which is written for the **active** version, 1.21.8. Code for

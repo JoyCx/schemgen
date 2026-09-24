@@ -1,4 +1,9 @@
 import java.security.MessageDigest
+import java.util.jar.Attributes
+import java.util.jar.Manifest
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 // The Minecraft layer, built once per game version. Stonecutter runs this
 // script for every fabric/versions/<version> project, with that folder's
@@ -21,6 +26,41 @@ repositories {
     }
 }
 
+/**
+ * A mod to compile against only, as a copy whose manifest no longer names the
+ * Loom that built it. Recent Litematica and MaLiLib builds are made with a
+ * newer Loom than this build's (1.14 to 1.17 against 1.13, the newest on
+ * Gradle 8), and Loom refuses to remap a jar stamped with a newer version of
+ * itself. The stamp guards running such a jar, which the mod never does:
+ * compiling against its classes is unaffected. Resolved while configuring,
+ * because Loom sets up mod dependencies then.
+ */
+fun compileOnlyMod(notation: String): ConfigurableFileCollection {
+    val jar = configurations.detachedConfiguration(dependencies.create(notation))
+        .apply { isTransitive = false }
+        .singleFile
+    val copy = layout.buildDirectory.file("compile-only-mods/${jar.name}").get().asFile
+    if (!copy.isFile || copy.lastModified() < jar.lastModified()) {
+        copy.parentFile.mkdirs()
+        ZipInputStream(jar.inputStream().buffered()).use { input ->
+            ZipOutputStream(copy.outputStream().buffered()).use { output ->
+                generateSequence { input.nextEntry }.forEach { entry ->
+                    output.putNextEntry(ZipEntry(entry.name))
+                    if (entry.name == "META-INF/MANIFEST.MF") {
+                        val manifest = Manifest(input)
+                        manifest.mainAttributes.remove(Attributes.Name("Fabric-Loom-Version"))
+                        manifest.write(output)
+                    } else {
+                        input.copyTo(output)
+                    }
+                    output.closeEntry()
+                }
+            }
+        }
+    }
+    return files(copy)
+}
+
 dependencies {
     minecraft("com.mojang:minecraft:$minecraftVersion")
     mappings("net.fabricmc:yarn:${property("yarn_mappings")}:v2")
@@ -33,8 +73,8 @@ dependencies {
     }
 
     // Optional at runtime: the bridge is only loaded when Litematica is installed.
-    modCompileOnly("maven.modrinth:litematica:${property("litematica_version")}")
-    modCompileOnly("maven.modrinth:malilib:${property("malilib_version")}")
+    modCompileOnly(compileOnlyMod("maven.modrinth:litematica:${property("litematica_version")}"))
+    modCompileOnly(compileOnlyMod("maven.modrinth:malilib:${property("malilib_version")}"))
 
     // Everything that does not touch Minecraft, nested in the jar. It uses the
     // game's own Gson.
