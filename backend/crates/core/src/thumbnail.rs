@@ -240,9 +240,10 @@ fn premultiply(mut img: RgbaImage) -> RgbaImage {
 fn unpremultiply(mut img: RgbaImage) -> RgbaImage {
     for p in img.pixels_mut() {
         let a = p[3] as u32;
-        if a > 0 {
-            for c in 0..3 {
-                p[c] = ((p[c] as u32 * 255 + a / 2) / a).min(255) as u8;
+        for c in 0..3 {
+            // Fully transparent pixels (a = 0) are left as they are.
+            if let Some(v) = (p[c] as u32 * 255 + a / 2).checked_div(a) {
+                p[c] = v.min(255) as u8;
             }
         }
     }

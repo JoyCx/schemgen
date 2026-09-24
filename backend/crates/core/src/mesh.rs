@@ -504,11 +504,7 @@ fn decode_image(
         Ok(decoded) => {
             let rgba = decoded.to_rgba8();
             let (width, height) = rgba.dimensions();
-            let pixels = rgba
-                .into_raw()
-                .chunks_exact(4)
-                .map(|p| [p[0], p[1], p[2], p[3]])
-                .collect();
+            let pixels = rgba.into_raw().as_chunks::<4>().0.to_vec();
             Some(Image {
                 width,
                 height,
@@ -807,10 +803,7 @@ fn read_primitive(
         )));
     }
     let mut triangles: Vec<[u32; 3]> = match mode {
-        Mode::Triangles => indices
-            .chunks_exact(3)
-            .map(|t| [t[0], t[1], t[2]])
-            .collect(),
+        Mode::Triangles => indices.as_chunks::<3>().0.to_vec(),
         // Every other strip triangle is reversed, keeping the winding.
         Mode::TriangleStrip => indices
             .windows(3)
