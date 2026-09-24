@@ -77,28 +77,31 @@ named models in one batch become `name.litematic` and `name-2.litematic`.
 
 ```
 frontend/src/
-├── app.jsx                  Main app and state
+├── App.jsx                  Main app and state
 ├── api.js                   API client
+├── settingsDefaults.js      Default settings — the one copy the UI keeps
 ├── delightshader.js         GLSL mirror of the de-light model
 ├── lighting.js              Shared light-direction math
-├── app.css                  Styling
+├── App.css                  Styling
 └── components/
-    ├── dropzone.jsx         Drag-and-drop upload
-    ├── settings.jsx         Conversion settings
-    ├── progresspanel.jsx    Live progress
-    ├── resultpanel.jsx      Download / save / reveal
-    ├── palettegrid.jsx      Block palette
+    ├── DropZone.jsx         Drag-and-drop upload
+    ├── Settings.jsx         Conversion settings
+    ├── PaletteGrid.jsx      Block palette
     ├── BatchPanel.jsx       Multi-file queue
-    ├── modelpreview.jsx     3D GLB viewer + light handle
-    └── minecraftpreview.jsx Voxel/block preview
+    ├── ModelPreview.jsx     3D GLB viewer + light handle
+    └── MinecraftPreview.jsx Voxel/block preview
 ```
+
+`npm run lint` (ESLint) and `npm run format` / `format:check` (Prettier) keep
+it tidy; CI runs both.
 
 ## Adding a setting
 
 A setting has to be added in three places or it is silently dropped:
 
-1. `frontend/src/components/settings.jsx` — the control
-2. `frontend/src/api.js` — put it in the multipart body
+1. `frontend/src/components/Settings.jsx` — the control
+2. `frontend/src/settingsDefaults.js` — its default, and its multipart field in
+   `conversionFields`
 3. `backend/src/api.rs` — the `ConvertForm` / `BatchConvertForm` field, and
    `options_from_fields`
 

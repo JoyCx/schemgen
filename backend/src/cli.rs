@@ -33,10 +33,12 @@ pub const HELP_SERVE: &str = "\
 schemgen2 serve — HTTP API + web UI on one port
 
 USAGE:
-    schemgen2 serve [--port <N>]
+    schemgen2 serve [--port <N>] [--python <PATH>]
 
 OPTIONS:
-    --port <N>    Port to bind (default 3001, or the PORT env var)
+    --port <N>        Port to bind (default 3001, or the PORT env var)
+    --python <PATH>   Python interpreter with trimesh installed (default python3,
+                      python on Windows; also SCHEMGEN_PYTHON)
 
 The web UI is served from ../frontend/dist when that folder exists; the API is
 available either way. See docs/api.md for the routes.
@@ -83,6 +85,8 @@ OUTPUT FORMAT:
 
 RUN:
     --threads <N>             Convert N files at once (default 1)
+    --python <PATH>           Python interpreter with trimesh installed (default
+                              python3, python on Windows; also SCHEMGEN_PYTHON)
     -q, --quiet               No progress lines
     -j, --json                Print a JSON result object on stdout
 
@@ -92,10 +96,27 @@ EXIT CODES:
 
 /// Long options that consume the next argument.
 const VALUE_OPTS: &[&str] = &[
-    "output", "out-dir", "name", "max-size", "voxel-size", "ram-limit", "threads",
-    "block", "brightness", "contrast", "saturation", "light-dir", "light-ambient",
-    "light-gloss", "specular", "highlight-rejection", "highlight-recovery",
-    "delight", "data-version", "port",
+    "output",
+    "out-dir",
+    "name",
+    "max-size",
+    "voxel-size",
+    "ram-limit",
+    "threads",
+    "block",
+    "brightness",
+    "contrast",
+    "saturation",
+    "light-dir",
+    "light-ambient",
+    "light-gloss",
+    "specular",
+    "highlight-rejection",
+    "highlight-recovery",
+    "delight",
+    "data-version",
+    "port",
+    "python",
 ];
 
 /// One-letter aliases. The bool marks the ones that take a value.
@@ -119,13 +140,19 @@ pub struct ParsedArgs {
 }
 
 impl ParsedArgs {
-    pub fn has(&self, flag: &str) -> bool { self.flags.contains(flag) }
-    pub fn get(&self, key: &str) -> Option<&str> { self.opts.get(key).map(String::as_str) }
+    pub fn has(&self, flag: &str) -> bool {
+        self.flags.contains(flag)
+    }
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.opts.get(key).map(String::as_str)
+    }
 
     fn number<T: std::str::FromStr>(&self, key: &str, default: T) -> Result<T, String> {
         match self.get(key) {
             None => Ok(default),
-            Some(raw) => raw.trim().parse::<T>()
+            Some(raw) => raw
+                .trim()
+                .parse::<T>()
                 .map_err(|_| format!("--{key}: '{raw}' is not a number")),
         }
     }
@@ -167,7 +194,9 @@ pub fn parse(argv: &[String]) -> Result<ParsedArgs, String> {
                 let value = match inline {
                     Some(v) => v,
                     None => {
-                        let v = argv.get(i).cloned()
+                        let v = argv
+                            .get(i)
+                            .cloned()
                             .ok_or_else(|| format!("--{key} needs a value"))?;
                         i += 1;
                         v
@@ -187,14 +216,17 @@ pub fn parse(argv: &[String]) -> Result<ParsedArgs, String> {
         if arg.len() > 1 && arg.starts_with('-') {
             let chars: Vec<char> = arg.chars().skip(1).collect();
             for (pos, c) in chars.iter().enumerate() {
-                let (_, name, takes_value) = SHORT_OPTS.iter()
+                let (_, name, takes_value) = SHORT_OPTS
+                    .iter()
                     .find(|(short, _, _)| short == c)
                     .ok_or_else(|| format!("unknown option -{c}"))?;
                 if *takes_value {
                     // The rest of the cluster is the value, else the next argv.
                     let tail: String = chars[pos + 1..].iter().collect();
                     let value = if tail.is_empty() {
-                        let v = argv.get(i).cloned()
+                        let v = argv
+                            .get(i)
+                            .cloned()
                             .ok_or_else(|| format!("-{c} needs a value"))?;
                         i += 1;
                         v
@@ -220,7 +252,10 @@ pub fn parse(argv: &[String]) -> Result<ParsedArgs, String> {
 }
 
 fn is_known_flag(name: &str) -> bool {
-    matches!(name, "no-dither" | "no-color" | "quiet" | "json" | "help" | "version")
+    matches!(
+        name,
+        "no-dither" | "no-color" | "quiet" | "json" | "help" | "version"
+    )
 }
 
 // ---- convert ---------------------------------------------------------------
@@ -242,7 +277,9 @@ pub async fn convert(args: &ParsedArgs, palette: Arc<Palette>) -> Result<i32, St
     let base_options = options_from_args(args)?;
 
     if let Some(raw) = args.get("data-version") {
-        let version: i32 = raw.trim().parse()
+        let version: i32 = raw
+            .trim()
+            .parse()
             .map_err(|_| format!("--data-version: '{raw}' is not a number"))?;
         crate::litematic::set_data_version(version);
     }
@@ -252,7 +289,9 @@ pub async fn convert(args: &ParsedArgs, palette: Arc<Palette>) -> Result<i32, St
         return Err("--output takes a single input file; use --out-dir for several".to_string());
     }
     if args.get("name").is_some() && inputs.len() > 1 {
-        return Err("--name takes a single input file; with several, each keeps its own name".to_string());
+        return Err(
+            "--name takes a single input file; with several, each keeps its own name".to_string(),
+        );
     }
 
     let out_dir = match args.get("out-dir") {
@@ -266,10 +305,15 @@ pub async fn convert(args: &ParsedArgs, palette: Arc<Palette>) -> Result<i32, St
     let mut taken: HashSet<String> = HashSet::new();
     let mut plan: Vec<(PathBuf, PathBuf, String)> = Vec::new();
     for input in &inputs {
-        let stem = input.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+        let stem = input
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("output");
         let name = args.get("name").unwrap_or(stem).to_string();
         let filename = savedir::dedupe_filename(
-            &savedir::sanitize_filename(&format!("{name}.litematic")), &mut taken);
+            &savedir::sanitize_filename(&format!("{name}.litematic")),
+            &mut taken,
+        );
         let output = match (&explicit_output, &out_dir) {
             (Some(path), _) => path.clone(),
             (None, Some(dir)) => dir.join(&filename),
@@ -288,8 +332,12 @@ pub async fn convert(args: &ParsedArgs, palette: Arc<Palette>) -> Result<i32, St
     let show_prefix = plan.len() > 1;
 
     if !quiet {
-        eprintln!("SchemGen2 {} — {} file(s), {} palette entries",
-            env!("CARGO_PKG_VERSION"), plan.len(), palette.len());
+        eprintln!(
+            "SchemGen2 {} — {} file(s), {} palette entries",
+            env!("CARGO_PKG_VERSION"),
+            plan.len(),
+            palette.len()
+        );
     }
 
     let mut outcomes: Vec<JobOutcome> = Vec::with_capacity(plan.len());
@@ -302,20 +350,26 @@ pub async fn convert(args: &ParsedArgs, palette: Arc<Palette>) -> Result<i32, St
             let input_s = input.display().to_string();
             let output_s = output.display().to_string();
             let label = if show_prefix {
-                format!("{} ", input.file_name().and_then(|s| s.to_str()).unwrap_or(""))
+                format!(
+                    "{} ",
+                    input.file_name().and_then(|s| s.to_str()).unwrap_or("")
+                )
             } else {
                 String::new()
             };
 
             handles.push((
-                input.clone(), output.clone(), name.clone(),
+                input.clone(),
+                output.clone(),
+                name.clone(),
                 tokio::task::spawn_blocking(move || {
                     run_blocking(&input_s, &output_s, options, palette, quiet, label)
                 }),
             ));
         }
         for (input, output, name, handle) in handles {
-            let result = handle.await
+            let result = handle
+                .await
                 .unwrap_or_else(|e| Err(format!("conversion task panicked: {e}")));
             outcomes.push(JobOutcome {
                 input: input.display().to_string(),
@@ -364,28 +418,34 @@ fn run_blocking(
 /// `schemgen2 convert a.glb | xargs -I{} cp {} ...` works.
 fn report(outcomes: &[JobOutcome], as_json: bool, quiet: bool) {
     if as_json {
-        let files: Vec<serde_json::Value> = outcomes.iter().map(|o| match &o.result {
-            Ok(r) => serde_json::json!({
-                "ok": true,
-                "input": o.input,
-                "output": o.output,
-                "name": o.name,
-                "voxels": r.voxel_count,
-                "unique_blocks": r.unique_blocks,
-                "grid": [r.grid.0, r.grid.1, r.grid.2],
-                "seconds": r.elapsed,
-            }),
-            Err(e) => serde_json::json!({
-                "ok": false, "input": o.input, "output": o.output,
-                "name": o.name, "error": e,
-            }),
-        }).collect();
+        let files: Vec<serde_json::Value> = outcomes
+            .iter()
+            .map(|o| match &o.result {
+                Ok(r) => serde_json::json!({
+                    "ok": true,
+                    "input": o.input,
+                    "output": o.output,
+                    "name": o.name,
+                    "voxels": r.voxel_count,
+                    "unique_blocks": r.unique_blocks,
+                    "grid": [r.grid.0, r.grid.1, r.grid.2],
+                    "seconds": r.elapsed,
+                }),
+                Err(e) => serde_json::json!({
+                    "ok": false, "input": o.input, "output": o.output,
+                    "name": o.name, "error": e,
+                }),
+            })
+            .collect();
         let ok = outcomes.iter().all(|o| o.result.is_ok());
-        println!("{}", serde_json::json!({
-            "ok": ok,
-            "data_version": crate::litematic::data_version(),
-            "files": files,
-        }));
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": ok,
+                "data_version": crate::litematic::data_version(),
+                "files": files,
+            })
+        );
         return;
     }
 
@@ -393,9 +453,16 @@ fn report(outcomes: &[JobOutcome], as_json: bool, quiet: bool) {
         match &outcome.result {
             Ok(r) => {
                 if !quiet {
-                    eprintln!("{} — {} blocks, {} unique, {}×{}×{}, {:.1}s",
-                        outcome.name, r.voxel_count, r.unique_blocks,
-                        r.grid.0, r.grid.1, r.grid.2, r.elapsed);
+                    eprintln!(
+                        "{} — {} blocks, {} unique, {}×{}×{}, {:.1}s",
+                        outcome.name,
+                        r.voxel_count,
+                        r.unique_blocks,
+                        r.grid.0,
+                        r.grid.1,
+                        r.grid.2,
+                        r.elapsed
+                    );
                 }
                 println!("{}", outcome.output);
             }
@@ -444,8 +511,11 @@ fn options_from_args(args: &ParsedArgs) -> Result<ConversionOptions, String> {
     Ok(ConversionOptions {
         max_size: args.number::<u32>("max-size", 128)?.max(1),
         voxel_size: match args.get("voxel-size") {
-            Some(raw) => Some(raw.trim().parse::<f32>()
-                .map_err(|_| format!("--voxel-size: '{raw}' is not a number"))?),
+            Some(raw) => Some(
+                raw.trim()
+                    .parse::<f32>()
+                    .map_err(|_| format!("--voxel-size: '{raw}' is not a number"))?,
+            ),
             None => None,
         },
         ram_limit: args.number::<f32>("ram-limit", 4.0)?.max(0.5),
@@ -477,7 +547,9 @@ fn parse_direction(raw: &str) -> Result<[f32; 3], String> {
     }
     let mut out = [0.0f32; 3];
     for (slot, part) in out.iter_mut().zip(parts) {
-        *slot = part.parse().map_err(|_| format!("--light-dir: '{part}' is not a number"))?;
+        *slot = part
+            .parse()
+            .map_err(|_| format!("--light-dir: '{part}' is not a number"))?;
     }
     if out == [0.0, 0.0, 0.0] {
         return Err("--light-dir: the zero vector has no direction".to_string());
@@ -491,14 +563,19 @@ fn parse_direction(raw: &str) -> Result<[f32; 3], String> {
 pub fn palette(args: &ParsedArgs, palette: &Palette) {
     let table = palette.to_palette_json();
     if args.has("json") {
-        println!("{}", serde_json::to_string_pretty(&table).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&table).unwrap_or_default()
+        );
         return;
     }
     let mut rows: Vec<(&String, &[f32; 3])> = table.iter().collect();
     rows.sort_by(|a, b| a.0.cmp(b.0));
     for (name, rgb) in &rows {
-        println!("{:<44} #{:02X}{:02X}{:02X}", name,
-            rgb[0] as u8, rgb[1] as u8, rgb[2] as u8);
+        println!(
+            "{:<44} #{:02X}{:02X}{:02X}",
+            name, rgb[0] as u8, rgb[1] as u8, rgb[2] as u8
+        );
     }
     eprintln!("{} blocks, {} palette entries", rows.len(), palette.len());
 }
@@ -521,7 +598,15 @@ mod tests {
 
     #[test]
     fn accepts_inline_values_and_short_clusters() {
-        let a = parse(&argv(&["convert", "m.glb", "--max-size=96", "-qj", "-o", "out.litematic"])).unwrap();
+        let a = parse(&argv(&[
+            "convert",
+            "m.glb",
+            "--max-size=96",
+            "-qj",
+            "-o",
+            "out.litematic",
+        ]))
+        .unwrap();
         assert_eq!(a.get("max-size"), Some("96"));
         assert!(a.has("quiet") && a.has("json"));
         assert_eq!(a.get("output"), Some("out.litematic"));
@@ -556,9 +641,20 @@ mod tests {
     #[test]
     fn flags_override_and_clamp() {
         let a = parse(&argv(&[
-            "convert", "m.glb", "--no-dither", "--no-color", "--block", "netherrack",
-            "--saturation", "9", "--delight", "0.5", "--light-dir", "0,1,0",
-        ])).unwrap();
+            "convert",
+            "m.glb",
+            "--no-dither",
+            "--no-color",
+            "--block",
+            "netherrack",
+            "--saturation",
+            "9",
+            "--delight",
+            "0.5",
+            "--light-dir",
+            "0,1,0",
+        ]))
+        .unwrap();
         let o = options_from_args(&a).unwrap();
         assert!(!o.use_dithering && !o.use_color_sampling);
         assert_eq!(o.default_block_name, "minecraft:netherrack");

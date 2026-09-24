@@ -15,11 +15,7 @@ export default function PaletteGrid({ palette }) {
 
       <div className="palette-grid">
         {display.map(([name, rgb]) => (
-          <div
-            key={name}
-            className="palette-item"
-            title={name}
-          >
+          <div key={name} className="palette-item" title={name}>
             <div
               className="palette-swatch"
               style={{ backgroundColor: `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` }}

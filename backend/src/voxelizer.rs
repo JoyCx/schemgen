@@ -1,16 +1,60 @@
 //! Voxelizer — calls the Python trimesh helper via subprocess for hollow voxelization.
 
-use std::process::Command;
 use serde::Deserialize;
+use std::path::PathBuf;
+use std::process::Command;
+use std::sync::OnceLock;
 
 use crate::types::LightingOptions;
+
+/// Interpreter chosen with `--python`, which beats `SCHEMGEN_PYTHON`.
+static PYTHON_OVERRIDE: OnceLock<String> = OnceLock::new();
+
+/// Use this Python interpreter for every conversion in this process. Called
+/// once, at startup, from the `--python` flag.
+pub fn set_python(path: &str) {
+    let path = path.trim();
+    if !path.is_empty() {
+        let _ = PYTHON_OVERRIDE.set(path.to_string());
+    }
+}
+
+/// The interpreter that must have `trimesh` installed: `--python`, else
+/// `SCHEMGEN_PYTHON` (typically a virtualenv's), else whatever `python3`
+/// (`python` on Windows) resolves to on `PATH`.
+pub fn python_interpreter() -> String {
+    if let Some(path) = PYTHON_OVERRIDE.get() {
+        return path.clone();
+    }
+    match std::env::var("SCHEMGEN_PYTHON") {
+        Ok(path) if !path.trim().is_empty() => path.trim().to_string(),
+        _ => if cfg!(windows) { "python" } else { "python3" }.to_string(),
+    }
+}
+
+/// `voxelize.py`: `SCHEMGEN_SCRIPTS_DIR` wins, then a `scripts` folder next to
+/// the binary, then the source tree the binary was built from.
+fn voxelize_script() -> PathBuf {
+    let from_env = std::env::var("SCHEMGEN_SCRIPTS_DIR")
+        .ok()
+        .map(PathBuf::from);
+    let beside_exe = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("scripts")));
+    let source_tree = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts");
+    [from_env, beside_exe, Some(source_tree.clone())]
+        .into_iter()
+        .flatten()
+        .map(|dir| dir.join("voxelize.py"))
+        .find(|script| script.is_file())
+        .unwrap_or_else(|| source_tree.join("voxelize.py"))
+}
 
 #[derive(Debug, Deserialize)]
 struct VoxelOutput {
     coords: Vec<[i32; 3]>,
     pitch: f32,
     grid_dims: [i32; 3],
-    voxel_world_origin: [f32; 3],
     /// Present when the helper was asked to sample colors in the same pass.
     colors: Option<Vec<[f32; 3]>>,
 }
@@ -18,9 +62,7 @@ struct VoxelOutput {
 /// Result of one combined voxelize (+ optional color sampling) pass.
 pub struct VoxelizeResult {
     pub coords: Vec<[i32; 3]>,
-    pub pitch: f32,
     pub grid_dims: (u32, u32, u32),
-    pub world_origin: [f32; 3],
     pub colors: Option<Vec<[f32; 3]>>,
 }
 
@@ -33,16 +75,20 @@ pub fn voxelize(
     voxel_size: Option<f32>,
     sample_colors: Option<f32>, // Some(ram_limit_gb) to sample colors too
     lighting: &LightingOptions,
-    python_path: &str,
-    script_path: &str,
 ) -> Result<VoxelizeResult, String> {
-    log::info!("Voxelizing: {glb_path} (max_size={max_size}, colors={})",
-        sample_colors.is_some());
+    let python_path = python_interpreter();
+    let script_path = voxelize_script();
+    log::info!(
+        "Voxelizing: {glb_path} (max_size={max_size}, colors={})",
+        sample_colors.is_some()
+    );
 
-    let mut cmd = Command::new(python_path);
-    cmd.arg(script_path)
-        .arg("--input").arg(glb_path)
-        .arg("--max-size").arg(max_size.to_string());
+    let mut cmd = Command::new(&python_path);
+    cmd.arg(&script_path)
+        .arg("--input")
+        .arg(glb_path)
+        .arg("--max-size")
+        .arg(max_size.to_string());
 
     if let Some(vs) = voxel_size {
         cmd.arg("--voxel-size").arg(vs.to_string());
@@ -64,7 +110,10 @@ pub fn voxelize(
 
     // Use output() to capture stdout and stderr concurrently (avoids pipe deadlock)
     let result = cmd.output().map_err(|e| {
-        format!("Failed to run Python ({}): {e}", python_path)
+        format!(
+            "Failed to run Python ({python_path}): {e}. Point --python or SCHEMGEN_PYTHON \
+                 at an interpreter that has trimesh installed"
+        )
     })?;
 
     let stdout = String::from_utf8_lossy(&result.stdout);
@@ -85,7 +134,9 @@ pub fn voxelize(
             .lines()
             .filter_map(|l| {
                 let t = l.trim();
-                if t.is_empty() { None } else {
+                if t.is_empty() {
+                    None
+                } else {
                     Some(t.strip_prefix("ERROR: ").unwrap_or(t).to_string())
                 }
             })
@@ -105,9 +156,12 @@ pub fn voxelize(
         return Err("Voxelizer produced no output".to_string());
     }
 
-    let output: VoxelOutput = serde_json::from_str(trimmed_stdout)
-        .map_err(|e| format!("Failed to parse voxel output: {e}. Got: {}",
-            &trimmed_stdout[..trimmed_stdout.len().min(200)]))?;
+    let output: VoxelOutput = serde_json::from_str(trimmed_stdout).map_err(|e| {
+        format!(
+            "Failed to parse voxel output: {e}. Got: {}",
+            &trimmed_stdout[..trimmed_stdout.len().min(200)]
+        )
+    })?;
 
     let (sx, sy, sz) = (
         output.grid_dims[0] as u32,
@@ -115,22 +169,28 @@ pub fn voxelize(
         output.grid_dims[2] as u32,
     );
 
-    log::info!("Voxelization complete: {} voxels, grid={}×{}×{}, pitch={}",
-        output.coords.len(), sx, sy, sz, output.pitch);
+    log::info!(
+        "Voxelization complete: {} voxels, grid={}×{}×{}, pitch={}",
+        output.coords.len(),
+        sx,
+        sy,
+        sz,
+        output.pitch
+    );
 
     if let Some(colors) = &output.colors {
         if colors.len() != output.coords.len() {
             return Err(format!(
                 "Color count mismatch: {} colors for {} voxels",
-                colors.len(), output.coords.len()));
+                colors.len(),
+                output.coords.len()
+            ));
         }
     }
 
     Ok(VoxelizeResult {
         coords: output.coords,
-        pitch: output.pitch,
         grid_dims: (sx, sy, sz),
-        world_origin: output.voxel_world_origin,
         colors: output.colors,
     })
 }

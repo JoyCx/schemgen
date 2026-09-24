@@ -8,8 +8,17 @@ const STATUS_LABEL = {
 }
 
 export default function BatchPanel({
-  jobs, running, threads, error, outputDir, fileManager,
-  onRerun, onClear, onSaveAll, onReveal, onOpenFolder,
+  jobs,
+  running,
+  threads,
+  error,
+  outputDir,
+  fileManager,
+  onRerun,
+  onClear,
+  onSaveAll,
+  onReveal,
+  onOpenFolder,
 }) {
   const total = jobs.length
   const done = jobs.filter((j) => j.status === 'done').length
@@ -54,7 +63,9 @@ export default function BatchPanel({
           {jobs.map((j) => (
             <li key={j.key} className={`batch-item batch-item--${j.status}`}>
               <div className="batch-item-top">
-                <span className="batch-item-name" title={j.filename}>{j.filename}</span>
+                <span className="batch-item-name" title={j.filename}>
+                  {j.filename}
+                </span>
                 <span className="batch-item-status">{STATUS_LABEL[j.status] || j.status}</span>
               </div>
               <div className="batch-item-track">
@@ -65,7 +76,11 @@ export default function BatchPanel({
               </div>
               <div className="batch-item-bottom">
                 <span className="batch-item-msg" title={j.saved_path || j.message}>
-                  {j.saved_path ? `📁 ${j.saved_path}` : j.save_error ? `⚠️ ${j.save_error}` : j.message}
+                  {j.saved_path
+                    ? `📁 ${j.saved_path}`
+                    : j.save_error
+                      ? `⚠️ ${j.save_error}`
+                      : j.message}
                 </span>
                 {j.status === 'done' && (
                   <span className="batch-item-actions">

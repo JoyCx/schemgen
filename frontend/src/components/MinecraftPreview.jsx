@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 
@@ -27,8 +27,8 @@ const TEXTURE_ALIASES = {
 
 function textureFileFor(id) {
   if (TEXTURE_ALIASES[id]) return TEXTURE_ALIASES[id]
-  let file = id.replace(/^waxed_/, '')            // waxed copper reuses unwaxed art
-  file = file.replace(/(^|_)hyphae$/, '$1stem')   // hyphae reuse stem textures
+  let file = id.replace(/^waxed_/, '') // waxed copper reuses unwaxed art
+  file = file.replace(/(^|_)hyphae$/, '$1stem') // hyphae reuse stem textures
   return TEXTURE_ALIASES[file] || file
 }
 
@@ -59,7 +59,7 @@ function blockMaterial(name, palette) {
   }
   textureLoader.load(
     `https://assets.mcasset.cloud/1.21.5/assets/minecraft/textures/block/${file}.png`,
-    texture => {
+    (texture) => {
       texture.colorSpace = THREE.SRGBColorSpace
       texture.magFilter = THREE.NearestFilter
       texture.minFilter = THREE.NearestFilter
@@ -85,15 +85,17 @@ export default function MinecraftPreview({ preview, palette, loading, error, onC
 
   // Tick elapsed seconds while loading
   useEffect(() => {
-    if (!loading) { setElapsed(0); return }
+    if (!loading) {
+      setElapsed(0)
+      return
+    }
     setElapsed(0)
-    const t = setInterval(() => setElapsed(s => s + 1), 1000)
+    const t = setInterval(() => setElapsed((s) => s + 1), 1000)
     return () => clearInterval(t)
   }, [loading])
 
   useEffect(() => {
     if (!preview || !mountRef.current) return undefined
-    let disposed = false
     let frame = 0
     let renderer
     let observer
@@ -131,13 +133,21 @@ export default function MinecraftPreview({ preview, palette, loading, error, onC
         grouped.get(block.name).push(block)
       }
       const geometry = new THREE.BoxGeometry(0.98, 0.98, 0.98)
-      const center = new THREE.Vector3(Number(grid[0]) / 2, Number(grid[1]) / 2, Number(grid[2]) / 2)
+      const center = new THREE.Vector3(
+        Number(grid[0]) / 2,
+        Number(grid[1]) / 2,
+        Number(grid[2]) / 2,
+      )
       for (const [name, entries] of grouped) {
         const material = blockMaterial(name, palette)
         const mesh = new THREE.InstancedMesh(geometry, material, entries.length)
         const matrix = new THREE.Matrix4()
         entries.forEach((block, index) => {
-          matrix.makeTranslation(block.x + 0.5 - center.x, block.y + 0.5 - center.y, block.z + 0.5 - center.z)
+          matrix.makeTranslation(
+            block.x + 0.5 - center.x,
+            block.y + 0.5 - center.y,
+            block.z + 0.5 - center.z,
+          )
           mesh.setMatrixAt(index, matrix)
         })
         mesh.instanceMatrix.needsUpdate = true
@@ -170,7 +180,6 @@ export default function MinecraftPreview({ preview, palette, loading, error, onC
       setRenderError(e?.message || 'Could not render the Minecraft preview')
     }
     return () => {
-      disposed = true
       cancelAnimationFrame(frame)
       observer?.disconnect()
       controls?.dispose()
@@ -184,12 +193,17 @@ export default function MinecraftPreview({ preview, palette, loading, error, onC
       <div className="preview-heading">
         <div>
           <h3>Minecraft Preview</h3>
-          <p>Drag to orbit · wheel to zoom · right-drag to pan. Uses the same blocks as the verified preview .litematic.</p>
+          <p>
+            Drag to orbit · wheel to zoom · right-drag to pan. Uses the same blocks as the verified
+            preview .litematic.
+          </p>
         </div>
         <span className="preview-status">
           {loading ? `Building… ${elapsed}s` : stats}
           {loading && onCancel && (
-            <button className="preview-cancel" onClick={onCancel}>Cancel</button>
+            <button className="preview-cancel" onClick={onCancel}>
+              Cancel
+            </button>
           )}
         </span>
       </div>

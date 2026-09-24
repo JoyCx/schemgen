@@ -18,7 +18,7 @@ pub struct Rgb {
     pub b: f32,
 }
 
-/// One color entry for a block (from color_table.json).
+/// One color entry for a block (from color_table_safe.json).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockColorEntry {
     pub lab: [f32; 3],
@@ -104,13 +104,27 @@ pub struct ConversionOptions {
     pub lighting: LightingOptions,
 }
 
-fn default_max_size() -> u32 { 128 }
-fn default_ram_limit() -> f32 { 4.0 }
-fn default_true() -> bool { true }
-fn default_brightness() -> f32 { 0.0 }
-fn default_contrast() -> f32 { 1.0 }
-fn default_saturation() -> f32 { 1.0 }
-fn default_block() -> String { "minecraft:white_concrete".to_string() }
+fn default_max_size() -> u32 {
+    128
+}
+fn default_ram_limit() -> f32 {
+    4.0
+}
+fn default_true() -> bool {
+    true
+}
+fn default_brightness() -> f32 {
+    0.0
+}
+fn default_contrast() -> f32 {
+    1.0
+}
+fn default_saturation() -> f32 {
+    1.0
+}
+fn default_block() -> String {
+    "minecraft:white_concrete".to_string()
+}
 
 /// Progress event sent via SSE.
 #[derive(Debug, Clone, Serialize)]

@@ -85,6 +85,7 @@ for what each one does.
 |---|---|---|
 | `--data-version <N>` | 4440 | `MinecraftDataVersion` stamped into the file. 4440 = 1.21.8, 4671 = 1.21.11. Also `SCHEMGEN_DATA_VERSION`. |
 | `--threads <N>` | 1 | Convert N files concurrently |
+| `--python <PATH>` | `python3` (`python` on Windows) | Interpreter that has `trimesh` installed. Also `SCHEMGEN_PYTHON`. |
 | `-q, --quiet` | | No progress lines |
 | `-j, --json` | | Machine-readable result on stdout |
 

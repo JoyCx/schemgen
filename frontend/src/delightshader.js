@@ -9,7 +9,7 @@
 // Kept out of the component so it can be compiled against a real WebGL context
 // in a test without standing up React and a GLTF load first.
 
-export const VERTEX_SHADER = /* glsl */`
+export const VERTEX_SHADER = /* glsl */ `
 varying vec3 vNormal;
 varying vec2 vUv;
 uniform mat3 uNormalMatrix;
@@ -21,7 +21,7 @@ void main() {
 }
 `
 
-export const FRAGMENT_SHADER = /* glsl */`
+export const FRAGMENT_SHADER = /* glsl */ `
 varying vec3 vNormal;
 varying vec2 vUv;
 

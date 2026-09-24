@@ -36,11 +36,10 @@ in-process, the web app posts to the server, and they meet in the same
 | **Python** | 3.10+ with `trimesh[easy] numpy scipy Pillow` | mesh voxelization and color sampling |
 | **Node** | 22+ | building the web UI only — the CLI does not need it |
 
-The Rust binary shells out to Python for voxelization, so the `python` (Windows)
-/ `python3` (Linux, macOS) on your `PATH` must be the interpreter that has
-`trimesh` installed. If you use a virtualenv, activate it before running
-`schemgen2` — the interpreter is not currently configurable by flag or
-environment variable.
+The Rust binary shells out to Python for voxelization. By default that is the
+`python` (Windows) / `python3` (Linux, macOS) on your `PATH`; to use another
+interpreter — typically a virtualenv's — pass `--python <path>` to `convert` or
+`serve`, or set `SCHEMGEN_PYTHON`.
 
 ## Quick start
 
@@ -179,7 +178,12 @@ light and only the curated anti-grief blocks are kept.
 ```bash
 cd backend && cargo test --release                    # 29 passed
 cd backend/scripts && python test_sample_colors.py    # 23/23 passed
+cd frontend && npm run lint && npm run build          # lint + production build
 ```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of it on
+Linux and Windows, plus `cargo fmt --check`, `cargo clippy -D warnings` and
+`prettier --check`.
 
 The Rust tests cover the CIEDE2000 implementation against reference values, the
 KD-tree's pruning against a linear scan, the NBT writer, and output-folder

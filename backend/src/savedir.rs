@@ -13,7 +13,8 @@ use std::process::Command;
 const ILLEGAL_NAME_CHARS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 
 fn home_dir() -> Option<PathBuf> {
-    std::env::var("USERPROFILE").ok()
+    std::env::var("USERPROFILE")
+        .ok()
         .or_else(|| std::env::var("HOME").ok())
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
@@ -69,10 +70,16 @@ pub fn resolve(raw: &str) -> Result<PathBuf, String> {
     }
     // Accept either separator and report the native one, so a typed
     // "~/Downloads" does not come back as "C:\...".
-    let native = if cfg!(windows) { trimmed.replace('/', "\\") } else { trimmed.to_string() };
+    let native = if cfg!(windows) {
+        trimmed.replace('/', "\\")
+    } else {
+        trimmed.to_string()
+    };
     let path = PathBuf::from(&native);
     if !path.is_absolute() {
-        return Err(format!("Output folder must be an absolute path (got \"{native}\")"));
+        return Err(format!(
+            "Output folder must be an absolute path (got \"{native}\")"
+        ));
     }
     if path.exists() && !path.is_dir() {
         return Err(format!("\"{}\" exists but is not a folder", path.display()));
@@ -102,7 +109,10 @@ pub fn check(raw: &str) -> Result<DirCheck, String> {
     let dir = resolve(raw)?;
     if dir.is_dir() {
         probe_writable(&dir)?;
-        return Ok(DirCheck { path: dir, exists: true });
+        return Ok(DirCheck {
+            path: dir,
+            exists: true,
+        });
     }
     let mut ancestor = dir.parent();
     while let Some(p) = ancestor {
@@ -111,11 +121,17 @@ pub fn check(raw: &str) -> Result<DirCheck, String> {
                 return Err(format!("\"{}\" is not a folder", p.display()));
             }
             probe_writable(p)?;
-            return Ok(DirCheck { path: dir, exists: false });
+            return Ok(DirCheck {
+                path: dir,
+                exists: false,
+            });
         }
         ancestor = p.parent();
     }
-    Err(format!("\"{}\" is not on a drive that exists", dir.display()))
+    Err(format!(
+        "\"{}\" is not on a drive that exists",
+        dir.display()
+    ))
 }
 
 /// Resolve, create if missing, and confirm the folder is actually writable.
@@ -136,9 +152,17 @@ pub fn sanitize_filename(name: &str) -> String {
     let mut cleaned: String = name
         .trim()
         .chars()
-        .map(|c| if c.is_control() || ILLEGAL_NAME_CHARS.contains(&c) { '_' } else { c })
+        .map(|c| {
+            if c.is_control() || ILLEGAL_NAME_CHARS.contains(&c) {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
-    cleaned = cleaned.trim_matches(|c: char| c == '.' || c.is_whitespace()).to_string();
+    cleaned = cleaned
+        .trim_matches(|c: char| c == '.' || c.is_whitespace())
+        .to_string();
 
     if cleaned.is_empty() {
         cleaned = "schematic".to_string();
@@ -179,9 +203,13 @@ pub fn deliver(src: &Path, dir: &Path, filename: &str) -> Result<PathBuf, String
 
 /// Human name of this platform's file manager, for button labels.
 pub fn file_manager_name() -> &'static str {
-    if cfg!(windows) { "Explorer" }
-    else if cfg!(target_os = "macos") { "Finder" }
-    else { "file manager" }
+    if cfg!(windows) {
+        "Explorer"
+    } else if cfg!(target_os = "macos") {
+        "Finder"
+    } else {
+        "file manager"
+    }
 }
 
 /// Open the OS file manager with `path` selected.
@@ -207,7 +235,10 @@ pub fn reveal(path: &Path) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        Command::new("open").arg("-R").arg(path).spawn()
+        Command::new("open")
+            .arg("-R")
+            .arg(path)
+            .spawn()
             .map(|_| ())
             .map_err(|e| format!("Could not open Finder: {e}"))
     }
@@ -216,7 +247,9 @@ pub fn reveal(path: &Path) -> Result<(), String> {
     {
         // No portable "select the file" call — open the containing folder.
         let dir = path.parent().unwrap_or(path);
-        Command::new("xdg-open").arg(dir).spawn()
+        Command::new("xdg-open")
+            .arg(dir)
+            .spawn()
             .map(|_| ())
             .map_err(|e| format!("Could not open file manager: {e}"))
     }
@@ -250,7 +283,9 @@ pub fn reveal_dir(dir: &Path) -> Result<(), String> {
 /// launcher with 16 packs does not bury the real answers.
 fn instance_schematics(root: &Path, inner: &str) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    let Ok(entries) = std::fs::read_dir(root) else { return found };
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return found;
+    };
     for entry in entries.flatten() {
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             continue;
@@ -277,35 +312,56 @@ pub fn suggestions() -> Vec<(PathBuf, bool)> {
             paths.push(appdata.join(".minecraft").join("schematics"));
             // Prism and MultiMC keep the game dir under <instance>/.minecraft.
             paths.extend(instance_schematics(
-                &appdata.join("PrismLauncher").join("instances"), ".minecraft"));
+                &appdata.join("PrismLauncher").join("instances"),
+                ".minecraft",
+            ));
             paths.extend(instance_schematics(
-                &appdata.join("com.modrinth.theseus").join("profiles"), ""));
+                &appdata.join("com.modrinth.theseus").join("profiles"),
+                "",
+            ));
         }
     }
     if let Some(home) = home_dir() {
         if cfg!(target_os = "macos") {
-            paths.push(home.join("Library").join("Application Support")
-                .join("minecraft").join("schematics"));
+            paths.push(
+                home.join("Library")
+                    .join("Application Support")
+                    .join("minecraft")
+                    .join("schematics"),
+            );
         }
         if cfg!(not(windows)) {
             paths.push(home.join(".minecraft").join("schematics"));
             paths.extend(instance_schematics(
-                &home.join(".local").join("share").join("PrismLauncher").join("instances"),
-                ".minecraft"));
+                &home
+                    .join(".local")
+                    .join("share")
+                    .join("PrismLauncher")
+                    .join("instances"),
+                ".minecraft",
+            ));
         }
         // CurseForge puts instances straight in the profile, with no inner
         // .minecraft — this is where most Litematica users actually are.
         paths.extend(instance_schematics(
-            &home.join("curseforge").join("minecraft").join("Instances"), ""));
+            &home.join("curseforge").join("minecraft").join("Instances"),
+            "",
+        ));
         paths.extend(instance_schematics(
-            &home.join("MultiMC").join("instances"), ".minecraft"));
+            &home.join("MultiMC").join("instances"),
+            ".minecraft",
+        ));
         paths.push(home.join("Downloads"));
     }
 
     let mut seen = HashSet::new();
     paths.retain(|p| seen.insert(p.clone()));
-    let mut out: Vec<(PathBuf, bool)> = paths.into_iter()
-        .map(|p| { let exists = p.is_dir(); (p, exists) })
+    let mut out: Vec<(PathBuf, bool)> = paths
+        .into_iter()
+        .map(|p| {
+            let exists = p.is_dir();
+            (p, exists)
+        })
         .collect();
     // Folders that exist first — a discovered instance beats a default that was
     // never created. Order within each group is left as built.

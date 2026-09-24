@@ -8,7 +8,10 @@
   /shader-check.html on the dev server; "PASS" means the shader links.
 -->
 <html lang="en">
-  <head><meta charset="utf-8" /><title>De-light shader check</title></head>
+  <head>
+    <meta charset="utf-8" />
+    <title>De-light shader check</title>
+  </head>
   <body style="font: 14px monospace; padding: 16px">
     <pre id="out">running…</pre>
     <script type="module">
@@ -18,7 +21,10 @@
       const out = document.getElementById('out')
       const problems = []
       const originalError = console.error
-      console.error = (...args) => { problems.push(args.join(' ')); originalError(...args) }
+      console.error = (...args) => {
+        problems.push(args.join(' '))
+        originalError(...args)
+      }
 
       try {
         const renderer = new THREE.WebGLRenderer({ antialias: false })

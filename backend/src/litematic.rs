@@ -9,10 +9,10 @@
 //! We implement NBT serialization directly (no library dependency) since the
 //! format is well-defined and we only need a specific subset.
 
-use std::io::Write;
-use std::sync::atomic::{AtomicI32, Ordering};
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use std::io::Write;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 /// `MinecraftDataVersion` stamped into every schematic.
 ///
@@ -44,7 +44,10 @@ pub fn set_data_version(version: i32) {
     if version > 0 {
         DATA_VERSION.store(version, Ordering::Relaxed);
     } else {
-        log::warn!("Ignoring invalid data version {version}; keeping {}", data_version());
+        log::warn!(
+            "Ignoring invalid data version {version}; keeping {}",
+            data_version()
+        );
     }
 }
 
@@ -65,13 +68,8 @@ pub fn apply_env_data_version() {
 // ── NBT tag types ──────────────────────────────────────────────────────
 
 const TAG_END: u8 = 0;
-const TAG_BYTE: u8 = 1;
-const TAG_SHORT: u8 = 2;
 const TAG_INT: u8 = 3;
 const TAG_LONG: u8 = 4;
-const TAG_FLOAT: u8 = 5;
-const TAG_DOUBLE: u8 = 6;
-const TAG_BYTE_ARRAY: u8 = 7;
 const TAG_STRING: u8 = 8;
 const TAG_LIST: u8 = 9;
 const TAG_COMPOUND: u8 = 10;
@@ -103,14 +101,6 @@ impl NbtWriter {
         self.data.extend_from_slice(&v.to_be_bytes());
     }
 
-    fn write_be_f32(&mut self, v: f32) {
-        self.data.extend_from_slice(&v.to_be_bytes());
-    }
-
-    fn write_be_f64(&mut self, v: f64) {
-        self.data.extend_from_slice(&v.to_be_bytes());
-    }
-
     fn write_string(&mut self, s: &str) {
         let bytes = cesu8::to_cesu8(s);
         self.write_be_u16(bytes.len() as u16);
@@ -124,12 +114,6 @@ impl NbtWriter {
 
     fn end_compound(&mut self) {
         self.data.push(TAG_END);
-    }
-
-    fn write_byte(&mut self, name: &str, v: i8) {
-        self.data.push(TAG_BYTE);
-        self.write_string(name);
-        self.data.push(v as u8);
     }
 
     fn write_int(&mut self, name: &str, v: i32) {
@@ -165,10 +149,6 @@ impl NbtWriter {
 
     fn end_list_compound(&mut self) {
         self.data.push(TAG_END);
-    }
-
-    fn write_int_in_list(&mut self, v: i32) {
-        self.data.push(TAG_INT);
     }
 
     /// Writes packed block states. Takes u64 because that is how the bit
@@ -246,7 +226,10 @@ pub fn write_litematic(
     description: &str,
 ) -> std::io::Result<()> {
     if voxel_coords.is_empty() {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "No voxels"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "No voxels",
+        ));
     }
 
     // Compute grid dimensions
@@ -254,16 +237,25 @@ pub fn write_litematic(
     let mut sy: i32 = 0;
     let mut sz: i32 = 0;
     for coord in voxel_coords {
-        if coord[0] + 1 > sx { sx = coord[0] + 1; }
-        if coord[1] + 1 > sy { sy = coord[1] + 1; }
-        if coord[2] + 1 > sz { sz = coord[2] + 1; }
+        if coord[0] + 1 > sx {
+            sx = coord[0] + 1;
+        }
+        if coord[1] + 1 > sy {
+            sy = coord[1] + 1;
+        }
+        if coord[2] + 1 > sz {
+            sz = coord[2] + 1;
+        }
     }
 
     // Build palette: collect unique block names. Borrowing into the set keeps
     // this to one pass with no per-voxel String clone.
-    let unique: std::collections::BTreeSet<&str> =
-        block_names.iter().copied().collect();
-    log::info!("Writing litematic: {} blocks, {} unique", voxel_coords.len(), unique.len());
+    let unique: std::collections::BTreeSet<&str> = block_names.iter().copied().collect();
+    log::info!(
+        "Writing litematic: {} blocks, {} unique",
+        voxel_coords.len(),
+        unique.len()
+    );
 
     let mut palette: Vec<String> = unique.into_iter().map(str::to_string).collect();
 
@@ -272,7 +264,8 @@ pub fn write_litematic(
         palette.insert(0, "minecraft:air".to_string());
     }
 
-    let palette_map: std::collections::HashMap<&str, usize> = palette.iter()
+    let palette_map: std::collections::HashMap<&str, usize> = palette
+        .iter()
         .enumerate()
         .map(|(i, b)| (b.as_str(), i))
         .collect();
@@ -320,7 +313,7 @@ pub fn write_litematic(
     // Write NBT
     let mut w = NbtWriter::new();
     let data_version = data_version(); // see DEFAULT_DATA_VERSION
-    let version = 6;                   // Litematica schematic version
+    let version = 6; // Litematica schematic version
 
     w.begin_compound_named("");
 
@@ -401,7 +394,6 @@ pub fn write_litematic(
     // MinecraftDataVersion
     w.write_int("MinecraftDataVersion", data_version);
 
-
     w.end_compound(); // end root
 
     // Compress with GZip
@@ -411,7 +403,11 @@ pub fn write_litematic(
     let compressed = encoder.finish()?;
 
     std::fs::write(output_path, &compressed)?;
-    log::info!("Litematic written: {} → {} bytes compressed", output_path, compressed.len());
+    log::info!(
+        "Litematic written: {} → {} bytes compressed",
+        output_path,
+        compressed.len()
+    );
 
     Ok(())
 }
@@ -422,12 +418,9 @@ mod tests {
 
     #[test]
     fn test_empty_input() {
-        assert!(write_litematic(
-            "test_empty.litematic",
-            &[],
-            &[],
-            "test", "test", "test",
-        ).is_err());
+        assert!(
+            write_litematic("test_empty.litematic", &[], &[], "test", "test", "test",).is_err()
+        );
     }
 
     #[test]
@@ -436,7 +429,11 @@ mod tests {
         let names = &["minecraft:stone"];
         let res = write_litematic(
             "test_single.litematic",
-            coords, names, "test", "test", "test",
+            coords,
+            names,
+            "test",
+            "test",
+            "test",
         );
         assert!(res.is_ok());
         // Clean up

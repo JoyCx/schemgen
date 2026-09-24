@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use actix_web::{web, App, HttpServer};
-use actix_web::middleware;
 
 mod api;
 mod blocks;
@@ -34,20 +33,25 @@ use types::ColorTable;
 /// Load a color table from JSON, or return a minimal fallback.
 fn load_color_table(path: &Path) -> ColorTable {
     match std::fs::read_to_string(path) {
-        Ok(json) => {
-            match serde_json::from_str::<ColorTable>(&json) {
-                Ok(table) => {
-                    log::info!("Loaded color table: {} blocks from {}", table.len(), path.display());
-                    table
-                }
-                Err(e) => {
-                    log::error!("Failed to parse color table {}: {e}", path.display());
-                    fallback_table()
-                }
+        Ok(json) => match serde_json::from_str::<ColorTable>(&json) {
+            Ok(table) => {
+                log::info!(
+                    "Loaded color table: {} blocks from {}",
+                    table.len(),
+                    path.display()
+                );
+                table
             }
-        }
+            Err(e) => {
+                log::error!("Failed to parse color table {}: {e}", path.display());
+                fallback_table()
+            }
+        },
         Err(_) => {
-            log::warn!("No color table at {} — using built-in fallback", path.display());
+            log::warn!(
+                "No color table at {} — using built-in fallback",
+                path.display()
+            );
             fallback_table()
         }
     }
@@ -100,13 +104,14 @@ fn fallback_table() -> ColorTable {
 
     for (name, rgb) in blocks {
         let lab = palette::rgb_to_lab(rgb[0], rgb[1], rgb[2]);
-        table.insert(name.to_string(), vec![
-            crate::types::BlockColorEntry {
+        table.insert(
+            name.to_string(),
+            vec![crate::types::BlockColorEntry {
                 lab: [lab.l, lab.a, lab.b],
                 rgb: *rgb,
                 weight: 1.0,
-            }
-        ]);
+            }],
+        );
     }
     log::info!("Using fallback table: {} blocks", table.len());
     table
@@ -128,10 +133,15 @@ fn resolve_data_dir() -> PathBuf {
         std::env::current_dir().ok().map(|d| d.join("data")),
         std::env::current_dir().ok().map(|d| d.join("backend/data")),
         exe_dir.map(|d| d.join("data")),
-        exe_dir.and_then(|d| d.parent()).and_then(|d| d.parent()).map(|d| d.join("data")),
+        exe_dir
+            .and_then(|d| d.parent())
+            .and_then(|d| d.parent())
+            .map(|d| d.join("data")),
         Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data")),
     ];
-    candidates.into_iter().flatten()
+    candidates
+        .into_iter()
+        .flatten()
         .find(|dir| dir.join("color_table_safe.json").is_file())
         .unwrap_or_else(|| PathBuf::from("data"))
 }
@@ -151,8 +161,9 @@ fn load_palette(data_dir: &Path) -> (Palette, usize) {
 
 /// CLI commands want a quiet log; `serve` wants the request/pipeline log.
 fn init_logging(default_level: &str) {
-    let _ = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or(default_level)).try_init();
+    let _ =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level))
+            .try_init();
 }
 
 #[actix_web::main]
@@ -178,20 +189,29 @@ async fn main() -> std::io::Result<()> {
         _ => init_logging("warn"),
     }
     crate::litematic::apply_env_data_version();
+    if let Some(python) = args.get("python") {
+        crate::voxelizer::set_python(python);
+    }
 
     match command {
         "help" => {
-            print!("{}", match args.positional.first().map(String::as_str) {
-                Some("convert") => cli::HELP_CONVERT,
-                Some("serve") => cli::HELP_SERVE,
-                _ => cli::HELP,
-            });
+            print!(
+                "{}",
+                match args.positional.first().map(String::as_str) {
+                    Some("convert") => cli::HELP_CONVERT,
+                    Some("serve") => cli::HELP_SERVE,
+                    _ => cli::HELP,
+                }
+            );
             Ok(())
         }
 
         "version" => {
-            println!("schemgen2 {} (litematic schematic v6, data version {})",
-                env!("CARGO_PKG_VERSION"), crate::litematic::data_version());
+            println!(
+                "schemgen2 {} (litematic schematic v6, data version {})",
+                env!("CARGO_PKG_VERSION"),
+                crate::litematic::data_version()
+            );
             Ok(())
         }
 
@@ -220,12 +240,22 @@ async fn main() -> std::io::Result<()> {
         // curated color table and exits. Defaults match the repo layout.
         "build-table" => {
             init_logging("info");
-            let pack = args.positional.first().map(PathBuf::from)
+            let pack = args
+                .positional
+                .first()
+                .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("../texture_pack"));
-            let out = args.positional.get(1).map(PathBuf::from)
+            let out = args
+                .positional
+                .get(1)
+                .map(PathBuf::from)
                 .unwrap_or_else(|| resolve_data_dir().join("color_table_safe.json"));
             let table = color_table::build_table(&pack, &out, true);
-            log::info!("build-table done: {} blocks → {}", table.len(), out.display());
+            log::info!(
+                "build-table done: {} blocks → {}",
+                table.len(),
+                out.display()
+            );
             Ok(())
         }
 
@@ -247,14 +277,18 @@ async fn serve(args: &cli::ParsedArgs) -> std::io::Result<()> {
         return Ok(());
     }
 
-    let port = args.get("port").map(str::to_string)
+    let port = args
+        .get("port")
+        .map(str::to_string)
         .or_else(|| std::env::var("PORT").ok())
         .unwrap_or_else(|| "3001".to_string());
 
     // Paths — everything hangs off the resolved data folder, so `serve` also
     // works when the binary is started from outside `backend/`.
     let data_dir = resolve_data_dir();
-    let backend_dir = data_dir.parent().map(Path::to_path_buf)
+    let backend_dir = data_dir
+        .parent()
+        .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
     let upload_dir = backend_dir.join("uploads");
     let output_dir = backend_dir.join("outputs");
@@ -264,7 +298,10 @@ async fn serve(args: &cli::ParsedArgs) -> std::io::Result<()> {
 
     let (palette, block_count) = load_palette(&data_dir);
 
-    log::info!("Palette ready: {} entries for {block_count} unique blocks", palette.len());
+    log::info!(
+        "Palette ready: {} entries for {block_count} unique blocks",
+        palette.len()
+    );
 
     let state = Arc::new(crate::api::AppState {
         jobs: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
@@ -281,7 +318,10 @@ async fn serve(args: &cli::ParsedArgs) -> std::io::Result<()> {
     if serve_frontend {
         log::info!("Serving frontend from {}", frontend_dist.display());
     } else {
-        log::warn!("No frontend dist at {} — run 'cd frontend && npm run build'", frontend_dist.display());
+        log::warn!(
+            "No frontend dist at {} — run 'cd frontend && npm run build'",
+            frontend_dist.display()
+        );
     }
 
     let bind = format!("0.0.0.0:{port}");

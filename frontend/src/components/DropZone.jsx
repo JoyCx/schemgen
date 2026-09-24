@@ -4,14 +4,23 @@ import { useCallback, useRef, useState } from 'react'
 function collectFromEntry(entry, out) {
   return new Promise((resolve) => {
     if (entry.isFile) {
-      entry.file((f) => { out.push(f); resolve() }, () => resolve())
+      entry.file(
+        (f) => {
+          out.push(f)
+          resolve()
+        },
+        () => resolve(),
+      )
     } else if (entry.isDirectory) {
       const reader = entry.createReader()
       const step = () => {
-        reader.readEntries((entries) => {
-          if (!entries.length) return resolve()
-          Promise.all(entries.map((e) => collectFromEntry(e, out))).then(step)
-        }, () => resolve())
+        reader.readEntries(
+          (entries) => {
+            if (!entries.length) return resolve()
+            Promise.all(entries.map((e) => collectFromEntry(e, out))).then(step)
+          },
+          () => resolve(),
+        )
       }
       step()
     } else {
@@ -34,38 +43,48 @@ async function collectFiles(items) {
   return out
 }
 
-const accept = (list) => list.filter(
-  (f) => f.name.toLowerCase().endsWith('.glb') || f.name.toLowerCase().endsWith('.gltf'),
-)
+const accept = (list) =>
+  list.filter(
+    (f) => f.name.toLowerCase().endsWith('.glb') || f.name.toLowerCase().endsWith('.gltf'),
+  )
 
 export default function DropZone({ files, onFiles }) {
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef(null)
 
-  const handleDrop = useCallback(async (e) => {
-    e.preventDefault()
-    setDragOver(false)
-    const items = e.dataTransfer.items
-    let list = []
-    if (items && items.length) {
-      list = await collectFiles([...items])
-    } else {
-      list = [...e.dataTransfer.files]
-    }
-    const accepted = accept(list)
-    if (accepted.length) onFiles(accepted)
-  }, [onFiles])
+  const handleDrop = useCallback(
+    async (e) => {
+      e.preventDefault()
+      setDragOver(false)
+      const items = e.dataTransfer.items
+      let list = []
+      if (items && items.length) {
+        list = await collectFiles([...items])
+      } else {
+        list = [...e.dataTransfer.files]
+      }
+      const accepted = accept(list)
+      if (accepted.length) onFiles(accepted)
+    },
+    [onFiles],
+  )
 
-  const handleChange = useCallback((e) => {
-    const accepted = accept([...e.target.files])
-    if (accepted.length) onFiles(accepted)
-    e.target.value = ''
-  }, [onFiles])
+  const handleChange = useCallback(
+    (e) => {
+      const accepted = accept([...e.target.files])
+      if (accepted.length) onFiles(accepted)
+      e.target.value = ''
+    },
+    [onFiles],
+  )
 
   return (
     <div
       className={`dropzone ${dragOver ? 'drag-over' : ''} ${files.length ? 'has-file' : ''}`}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDragOver(true)
+      }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
       onClick={() => inputRef.current?.click()}
@@ -89,7 +108,10 @@ export default function DropZone({ files, onFiles }) {
           )}
           {files.length > 1 && (
             <span className="dropzone-size">
-              {files.slice(0, 4).map((f) => f.name).join(', ')}
+              {files
+                .slice(0, 4)
+                .map((f) => f.name)
+                .join(', ')}
               {files.length > 4 ? ` +${files.length - 4} more` : ''}
             </span>
           )}

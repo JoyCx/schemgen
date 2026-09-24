@@ -35,7 +35,10 @@ fn texture_overrides() -> TextureOverrides {
         ("pumpkin", &["pumpkin_side.png"]),
         ("carved_pumpkin", &["pumpkin_side.png"]),
         ("melon", &["melon_side.png"]),
-        ("crafting_table", &["crafting_table_front.png", "crafting_table_top.png"]),
+        (
+            "crafting_table",
+            &["crafting_table_front.png", "crafting_table_top.png"],
+        ),
         ("furnace", &["furnace_side.png", "furnace_top.png"]),
         ("tnt", &["tnt_side.png"]),
         ("bookshelf", &["bookshelf.png"]),
@@ -92,25 +95,35 @@ fn texture_overrides() -> TextureOverrides {
         ("dried_kelp_block", &["dried_kelp_side.png"]),
         ("target", &["target_side.png"]),
     ];
-    for (k, v) in ov { m.insert(k.to_string(), v.iter().map(|s| s.to_string()).collect()); }
+    for (k, v) in ov {
+        m.insert(k.to_string(), v.iter().map(|s| s.to_string()).collect());
+    }
     m
 }
 
 // ── Texture scanning ────────────────────────────────────────────────────
 
 fn skip_texture(stem: &str) -> bool {
-    let skips = ["_particle", "_gui", "destroy_stage", "debug", "item/", "entity/"];
+    let skips = [
+        "_particle",
+        "_gui",
+        "destroy_stage",
+        "debug",
+        "item/",
+        "entity/",
+    ];
     skips.iter().any(|s| stem.contains(s))
 }
 
 fn infer_block_id(filename: &str) -> Option<String> {
     let stem = Path::new(filename).file_stem()?.to_str()?;
-    if skip_texture(stem) { return None; }
+    if skip_texture(stem) {
+        return None;
+    }
 
     let suffixes = [
-        "_side", "_top", "_front", "_bottom", "_inner", "_outer",
-        "_overlay", "_back", "_on", "_off", "_lit", "_side0", "_side1",
-        "_stage0", "_stage1", "_stage2", "_stage3",
+        "_side", "_top", "_front", "_bottom", "_inner", "_outer", "_overlay", "_back", "_on",
+        "_off", "_lit", "_side0", "_side1", "_stage0", "_stage1", "_stage2", "_stage3",
     ];
 
     let mut base = stem.to_string();
@@ -137,7 +150,7 @@ fn group_textures(block_dir: &Path) -> HashMap<String, Vec<PathBuf>> {
     if let Ok(entries) = fs::read_dir(block_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "png") {
+            if path.extension().is_some_and(|e| e == "png") {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     if !name.contains(".mcmeta") {
                         all_files.push(path);
@@ -151,7 +164,10 @@ fn group_textures(block_dir: &Path) -> HashMap<String, Vec<PathBuf>> {
     for fpath in &all_files {
         if let Some(fname) = fpath.file_name().and_then(|n| n.to_str()) {
             if let Some(block_id) = infer_block_id(fname) {
-                block_to_files.entry(block_id).or_default().push(fpath.clone());
+                block_to_files
+                    .entry(block_id)
+                    .or_default()
+                    .push(fpath.clone());
             }
         }
     }
@@ -177,12 +193,20 @@ fn group_textures(block_dir: &Path) -> HashMap<String, Vec<PathBuf>> {
 
 fn srgb8_to_linear(v: u8) -> f64 {
     let c = v as f64 / 255.0;
-    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 fn linear_to_srgb8(c: f64) -> f32 {
     let c = c.clamp(0.0, 1.0);
-    let s = if c <= 0.003_130_8 { c * 12.92 } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 };
+    let s = if c <= 0.003_130_8 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    };
     (s * 255.0).round() as f32
 }
 
@@ -202,7 +226,9 @@ fn texture_mean_linear(tex_path: &Path) -> Option<[f64; 3]> {
         for x in 0..frame {
             let px = rgba.get_pixel(x, y);
             let a = px[3] as f64 / 255.0;
-            if a <= 0.0 { continue; }
+            if a <= 0.0 {
+                continue;
+            }
             sum[0] += srgb8_to_linear(px[0]) * a;
             sum[1] += srgb8_to_linear(px[1]) * a;
             sum[2] += srgb8_to_linear(px[2]) * a;
@@ -238,7 +264,10 @@ pub fn build_table(texture_pack_dir: &Path, output_path: &Path, anti_grief: bool
         let full_name = if anti_grief {
             match crate::blocks::sanitize(block_name) {
                 Some(name) => name,
-                None => { skipped += 1; continue; }
+                None => {
+                    skipped += 1;
+                    continue;
+                }
             }
         } else if block_name.contains(':') {
             block_name.clone()
@@ -247,10 +276,13 @@ pub fn build_table(texture_pack_dir: &Path, output_path: &Path, anti_grief: bool
         };
 
         // Equal weight per face texture, regardless of resolution.
-        let means: Vec<[f64; 3]> = tex_paths.iter()
+        let means: Vec<[f64; 3]> = tex_paths
+            .iter()
             .filter_map(|tp| texture_mean_linear(tp))
             .collect();
-        if means.is_empty() { continue; }
+        if means.is_empty() {
+            continue;
+        }
         let n = means.len() as f64;
         let mean = means.iter().fold([0.0f64; 3], |acc, m| {
             [acc[0] + m[0] / n, acc[1] + m[1] / n, acc[2] + m[2] / n]
@@ -279,14 +311,26 @@ pub fn build_table(texture_pack_dir: &Path, output_path: &Path, anti_grief: bool
         if entries.len() > 1 {
             let n = entries.len() as f32;
             let rgb = entries.iter().fold([0.0f32; 3], |acc, e| {
-                [acc[0] + e.rgb[0] / n, acc[1] + e.rgb[1] / n, acc[2] + e.rgb[2] / n]
+                [
+                    acc[0] + e.rgb[0] / n,
+                    acc[1] + e.rgb[1] / n,
+                    acc[2] + e.rgb[2] / n,
+                ]
             });
             let lab = rgb_to_lab(rgb[0], rgb[1], rgb[2]);
-            *entries = vec![BlockColorEntry { lab: [lab.l, lab.a, lab.b], rgb, weight: 1.0 }];
+            *entries = vec![BlockColorEntry {
+                lab: [lab.l, lab.a, lab.b],
+                rgb,
+                weight: 1.0,
+            }];
         }
     }
 
-    log::info!("Built table: {} blocks ({} texture groups filtered out).", table.len(), skipped);
+    log::info!(
+        "Built table: {} blocks ({} texture groups filtered out).",
+        table.len(),
+        skipped
+    );
 
     let json = serde_json::to_string_pretty(&table).unwrap();
     fs::write(output_path, &json).unwrap();

@@ -5,8 +5,21 @@ import PaletteGrid from './components/PaletteGrid.jsx'
 import ModelPreview from './components/ModelPreview.jsx'
 import MinecraftPreview from './components/MinecraftPreview.jsx'
 import BatchPanel from './components/BatchPanel.jsx'
-import { uploadAndConvert, uploadAndConvertBatch, pollProgress, fetchPalette, fetchLitematicPreview, downloadUrl, saveToFolder, revealJob, revealFolder, fetchSystemInfo } from './api.js'
-import { LIGHT_DEFAULTS, lightingParams } from './lighting.js'
+import {
+  uploadAndConvert,
+  uploadAndConvertBatch,
+  pollProgress,
+  fetchPalette,
+  fetchHealth,
+  fetchLitematicPreview,
+  downloadUrl,
+  saveToFolder,
+  revealJob,
+  revealFolder,
+  fetchSystemInfo,
+} from './api.js'
+import { LIGHT_DEFAULTS } from './lighting.js'
+import { SETTINGS_DEFAULTS } from './settingsDefaults.js'
 import './App.css'
 
 const OUTPUT_PREFS_KEY = 'schemgen2.output'
@@ -24,25 +37,6 @@ function loadOutputPrefs() {
   }
 }
 
-// Pure helper: build the multipart params object from a settings object.
-function paramsFor(s) {
-  return {
-    max_size: s.max_size,
-    voxel_size: s.voxel_size,
-    ram_limit: s.ram_limit,
-    dither: s.dither ? 'true' : 'false',
-    color_sampling: s.color_sampling ? 'true' : 'false',
-    brightness: s.brightness,
-    contrast: s.contrast,
-    saturation: s.saturation,
-    no_color_block: s.no_color_block,
-    schematic_name: s.schematic_name,
-    output_dir: s.auto_save ? s.output_dir.trim() : '',
-    auto_save: s.auto_save ? 'true' : 'false',
-    ...lightingParams(s),
-  }
-}
-
 // The lighting knobs, in the order the conversion key and the preview both
 // read them. Kept in one place so adding a knob cannot update one and not the
 // other — which would leave the preview showing a stale conversion.
@@ -52,51 +46,55 @@ const LIGHT_KEYS = Object.keys(LIGHT_DEFAULTS)
 // not trigger a re-conversion — the finished file is copied instead.
 function conversionKey(s) {
   return JSON.stringify([
-    s.max_size, s.voxel_size, s.ram_limit, s.dither, s.color_sampling,
-    s.brightness, s.contrast, s.saturation, s.no_color_block, s.schematic_name,
+    s.max_size,
+    s.voxel_size,
+    s.ram_limit,
+    s.dither,
+    s.color_sampling,
+    s.brightness,
+    s.contrast,
+    s.saturation,
+    s.no_color_block,
+    s.schematic_name,
     ...LIGHT_KEYS.map((k) => s[k]),
   ])
 }
 
 export default function App() {
-  const [files, setFiles]         = useState([])
-  const [status, setStatus]       = useState('idle') // idle | uploading | running | done | error
-  const [progress, setProgress]   = useState(0)
-  const [message, setMessage]     = useState('')
-  const [result, setResult]       = useState(null)   // { job_id, download_name }
-  const [error, setError]         = useState('')
-  const [palette, setPalette]     = useState(null)
+  const [files, setFiles] = useState([])
+  const [status, setStatus] = useState('idle') // idle | uploading | running | done | error
+  const [progress, setProgress] = useState(0)
+  const [message, setMessage] = useState('')
+  const [result, setResult] = useState(null) // { job_id, download_name }
+  const [error, setError] = useState('')
+  const [palette, setPalette] = useState(null)
   const [litematicPreview, setLitematicPreview] = useState(null)
-  const [previewLoading, setPreviewLoading]     = useState(false)
-  const [previewError, setPreviewError]         = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
   const [batchJobs, setBatchJobs] = useState([])
   const cancelPreviewRef = useRef(null)
   const [fileManager, setFileManager] = useState('Explorer')
   const [revealError, setRevealError] = useState('')
 
-  const [settings, setSettings] = useState({
-    max_size:      '128',
-    voxel_size:    '',
-    ram_limit:     '4.0',
-    threads:       '4',
-    dither:        true,
-    color_sampling: true,
-    brightness:    0,
-    contrast:      1,
-    saturation:    1,
-    no_color_block: 'white',
-    schematic_name: '',
-    ...LIGHT_DEFAULTS,
+  const [settings, setSettings] = useState(() => ({
+    ...SETTINGS_DEFAULTS,
     ...loadOutputPrefs(),
-  })
+  }))
+  const [version, setVersion] = useState('')
 
   // Persist the folder choice.
   useEffect(() => {
     try {
-      localStorage.setItem(OUTPUT_PREFS_KEY, JSON.stringify({
-        output_dir: settings.output_dir, auto_save: settings.auto_save,
-      }))
-    } catch { /* private mode — not worth surfacing */ }
+      localStorage.setItem(
+        OUTPUT_PREFS_KEY,
+        JSON.stringify({
+          output_dir: settings.output_dir,
+          auto_save: settings.auto_save,
+        }),
+      )
+    } catch {
+      /* private mode — not worth surfacing */
+    }
   }, [settings.output_dir, settings.auto_save])
 
   // Single-file mode only when exactly one file is present.
@@ -104,33 +102,48 @@ export default function App() {
   const batchMode = files.length > 1
 
   // Always-current refs so conversion closures never go stale.
-  const fileRef       = useRef(file)
-  const settingsRef   = useRef(settings)
-  const statusRef     = useRef(status)
-  const pendingRef    = useRef(false)
+  const fileRef = useRef(file)
+  const settingsRef = useRef(settings)
+  const statusRef = useRef(status)
+  const pendingRef = useRef(false)
   const runConvertRef = useRef(null)
   // `${job_id}|${folder as typed}` for the copy we know already happened, so the
   // re-save effect below does not repeat what the conversion just did.
-  const savedForRef   = useRef('')
-  fileRef.current     = file
+  const savedForRef = useRef('')
+  fileRef.current = file
   settingsRef.current = settings
-  statusRef.current   = status
+  statusRef.current = status
 
-  useEffect(() => { fetchPalette().then(setPalette).catch(() => {}) }, [])
   useEffect(() => {
-    fetchSystemInfo().then((i) => i?.file_manager && setFileManager(i.file_manager)).catch(() => {})
+    fetchPalette()
+      .then(setPalette)
+      .catch(() => {})
+  }, [])
+  // The version shown is the server's — Cargo.toml is the one place it is set.
+  useEffect(() => {
+    fetchHealth()
+      .then((h) => setVersion(h.version || ''))
+      .catch(() => {})
+  }, [])
+  useEffect(() => {
+    fetchSystemInfo()
+      .then((i) => i?.file_manager && setFileManager(i.file_manager))
+      .catch(() => {})
   }, [])
 
   // Show the finished schematic in the OS file manager instead of downloading a
   // second copy of a file that is already on this machine.
-  const reveal = useCallback(async (jobId) => {
-    setRevealError('')
-    try {
-      await revealJob(jobId)
-    } catch (e) {
-      setRevealError(e.message || `Could not open ${fileManager}`)
-    }
-  }, [fileManager])
+  const reveal = useCallback(
+    async (jobId) => {
+      setRevealError('')
+      try {
+        await revealJob(jobId)
+      } catch (e) {
+        setRevealError(e.message || `Could not open ${fileManager}`)
+      }
+    },
+    [fileManager],
+  )
 
   const openFolder = useCallback(async () => {
     const dir = settingsRef.current.output_dir.trim()
@@ -161,10 +174,10 @@ export default function App() {
     setProgress(0)
     setMessage('Uploading…')
 
-    const requestedDir = paramsFor(s).output_dir
+    const requestedDir = s.auto_save ? s.output_dir.trim() : ''
 
     try {
-      const { job_id } = await uploadAndConvert(f, paramsFor(s))
+      const { job_id } = await uploadAndConvert(f, s)
 
       setStatus('running')
 
@@ -207,7 +220,12 @@ export default function App() {
 
   // Auto-convert: immediately when a single file lands.
   useEffect(() => {
-    if (!file) { setResult(null); setStatus('idle'); setError(''); return }
+    if (!file) {
+      setResult(null)
+      setStatus('idle')
+      setError('')
+      return
+    }
     runConvert()
   }, [file]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -235,19 +253,30 @@ export default function App() {
       try {
         const { saved_path } = await saveToFolder(result.job_id, dir)
         savedForRef.current = key
-        if (!cancelled) setResult((r) => (r && r.job_id === result.job_id
-          ? { ...r, saved_path, save_error: '' } : r))
+        if (!cancelled)
+          setResult((r) =>
+            r && r.job_id === result.job_id ? { ...r, saved_path, save_error: '' } : r,
+          )
       } catch (e) {
-        if (!cancelled) setResult((r) => (r && r.job_id === result.job_id
-          ? { ...r, save_error: e.message || 'Save failed' } : r))
+        if (!cancelled)
+          setResult((r) =>
+            r && r.job_id === result.job_id ? { ...r, save_error: e.message || 'Save failed' } : r,
+          )
       }
     }, 800)
-    return () => { cancelled = true; clearTimeout(t) }
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
   }, [settings.output_dir, settings.auto_save, result?.job_id, result?.saved_path])
 
   // ---- Live Minecraft preview (single only) ---------------------------------
   useEffect(() => {
-    if (!file) { setLitematicPreview(null); cancelPreviewRef.current = null; return }
+    if (!file) {
+      setLitematicPreview(null)
+      cancelPreviewRef.current = null
+      return
+    }
     const controller = new AbortController()
     let timedOut = false
     let userCancelled = false
@@ -262,27 +291,23 @@ export default function App() {
     const timer = setTimeout(async () => {
       setPreviewLoading(true)
       setPreviewError('')
-      const watchdog = setTimeout(() => { timedOut = true; controller.abort() }, 10 * 60 * 1000)
+      const watchdog = setTimeout(
+        () => {
+          timedOut = true
+          controller.abort()
+        },
+        10 * 60 * 1000,
+      )
       try {
-        const data = await fetchLitematicPreview(file, {
-          max_size:       settings.max_size,
-          voxel_size:     settings.voxel_size,
-          ram_limit:      settings.ram_limit,
-          dither:         settings.dither         ? 'true' : 'false',
-          color_sampling: settings.color_sampling ? 'true' : 'false',
-          brightness:     settings.brightness,
-          contrast:       settings.contrast,
-          saturation:     settings.saturation,
-          no_color_block: settings.no_color_block,
-          schematic_name: 'preview',
-          ...lightingParams(settings),
-        }, controller.signal)
+        const data = await fetchLitematicPreview(file, settings, controller.signal)
         clearTimeout(watchdog)
         if (!controller.signal.aborted) setLitematicPreview(data)
       } catch (e) {
         clearTimeout(watchdog)
         if (timedOut) {
-          setPreviewError('Preview timed out — model is very large. Reduce Max Size or wait for the download to finish.')
+          setPreviewError(
+            'Preview timed out — model is very large. Reduce Max Size or wait for the download to finish.',
+          )
           setPreviewLoading(false)
         } else if (!userCancelled && !controller.signal.aborted) {
           setPreviewError(e.message || 'Preview failed')
@@ -293,30 +318,43 @@ export default function App() {
       }
     }, 450)
 
-    return () => { clearTimeout(timer); controller.abort(); cancelPreviewRef.current = null }
-  }, [file, settings.max_size, settings.voxel_size, settings.ram_limit, settings.dither,
-      settings.color_sampling, settings.brightness, settings.contrast, settings.saturation,
-      settings.no_color_block, ...LIGHT_KEYS.map((k) => settings[k])])
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+      cancelPreviewRef.current = null
+    }
+  }, [
+    file,
+    settings.max_size,
+    settings.voxel_size,
+    settings.ram_limit,
+    settings.dither,
+    settings.color_sampling,
+    settings.brightness,
+    settings.contrast,
+    settings.saturation,
+    settings.no_color_block,
+    ...LIGHT_KEYS.map((k) => settings[k]),
+  ])
 
   // ---- Batch conversion -----------------------------------------------------
   const startBatch = useCallback(async (fileList) => {
     const s = settingsRef.current
     try {
-      const { jobs } = await uploadAndConvertBatch(fileList, {
-        ...paramsFor(s),
-        threads: s.threads,
-      })
-      setBatchJobs(jobs.map((j) => ({
-        key: j.job_id,
-        job_id: j.job_id,
-        filename: j.filename,
-        status: 'queued',
-        progress: 0,
-        message: 'Queued…',
-        download_name: '',
-        saved_path: '',
-        save_error: '',
-      })))
+      const { jobs } = await uploadAndConvertBatch(fileList, s)
+      setBatchJobs(
+        jobs.map((j) => ({
+          key: j.job_id,
+          job_id: j.job_id,
+          filename: j.filename,
+          status: 'queued',
+          progress: 0,
+          message: 'Queued…',
+          download_name: '',
+          saved_path: '',
+          save_error: '',
+        })),
+      )
       setError('')
     } catch (e) {
       setError(e.message || 'Batch upload failed')
@@ -342,24 +380,32 @@ export default function App() {
     if (!active.length) return
 
     const t = setTimeout(async () => {
-      const updates = await Promise.all(active.map(async (j) => {
-        try { return await pollProgress(j.job_id) } catch { return null }
-      }))
-      setBatchJobs((prev) => prev.map((j) => {
-        const idx = active.findIndex((a) => a.key === j.key)
-        if (idx === -1) return j
-        const u = updates[idx]
-        if (!u) return j
-        return {
-          ...j,
-          status: u.status,
-          progress: u.progress,
-          message: u.message,
-          download_name: u.download_name,
-          saved_path: u.saved_path || '',
-          save_error: u.save_error || '',
-        }
-      }))
+      const updates = await Promise.all(
+        active.map(async (j) => {
+          try {
+            return await pollProgress(j.job_id)
+          } catch {
+            return null
+          }
+        }),
+      )
+      setBatchJobs((prev) =>
+        prev.map((j) => {
+          const idx = active.findIndex((a) => a.key === j.key)
+          if (idx === -1) return j
+          const u = updates[idx]
+          if (!u) return j
+          return {
+            ...j,
+            status: u.status,
+            progress: u.progress,
+            message: u.message,
+            download_name: u.download_name,
+            saved_path: u.saved_path || '',
+            save_error: u.save_error || '',
+          }
+        }),
+      )
     }, 800)
     return () => clearTimeout(t)
   }, [batchJobs])
@@ -369,22 +415,30 @@ export default function App() {
     const dir = settingsRef.current.output_dir.trim()
     if (!dir) return
     const done = batchJobs.filter((j) => j.status === 'done')
-    const results = await Promise.all(done.map(async (j) => {
-      try {
-        const { saved_path } = await saveToFolder(j.job_id, dir)
-        return { key: j.key, saved_path, save_error: '' }
-      } catch (e) {
-        return { key: j.key, saved_path: '', save_error: e.message || 'Save failed' }
-      }
-    }))
-    setBatchJobs((prev) => prev.map((j) => {
-      const r = results.find((x) => x.key === j.key)
-      return r ? { ...j, ...r } : j
-    }))
+    const results = await Promise.all(
+      done.map(async (j) => {
+        try {
+          const { saved_path } = await saveToFolder(j.job_id, dir)
+          return { key: j.key, saved_path, save_error: '' }
+        } catch (e) {
+          return { key: j.key, saved_path: '', save_error: e.message || 'Save failed' }
+        }
+      }),
+    )
+    setBatchJobs((prev) =>
+      prev.map((j) => {
+        const r = results.find((x) => x.key === j.key)
+        return r ? { ...j, ...r } : j
+      }),
+    )
   }, [batchJobs])
 
-  const handleFiles = useCallback((list) => { setFiles(list) }, [])
-  const rerunBatch = useCallback(() => { if (files.length > 1) startBatch(files) }, [files, startBatch])
+  const handleFiles = useCallback((list) => {
+    setFiles(list)
+  }, [])
+  const rerunBatch = useCallback(() => {
+    if (files.length > 1) startBatch(files)
+  }, [files, startBatch])
   const clearAll = useCallback(() => {
     setFiles([])
     setBatchJobs([])
@@ -394,12 +448,15 @@ export default function App() {
   }, [])
 
   const converting = status === 'uploading' || status === 'running'
-  const batchRunning = batchJobs.length > 0 && batchJobs.some((j) => j.status === 'queued' || j.status === 'running')
+  const batchRunning =
+    batchJobs.length > 0 && batchJobs.some((j) => j.status === 'queued' || j.status === 'running')
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>SchemGen<em>2</em></h1>
+        <h1>
+          SchemGen<em>2</em>
+        </h1>
         <p className="subtitle">GLB → Litematica · CIEDE2000 · Rust</p>
       </header>
 
@@ -417,7 +474,11 @@ export default function App() {
           />
         )}
         {files.length > 0 && (
-          <Settings settings={settings} onChange={setSettings} savedPath={result?.saved_path || ''} />
+          <Settings
+            settings={settings}
+            onChange={setSettings}
+            savedPath={result?.saved_path || ''}
+          />
         )}
 
         {batchMode && (
@@ -451,15 +512,17 @@ export default function App() {
               </div>
             )}
 
-            {status === 'error' && (
-              <p className="download-error">⚠️ {error}</p>
-            )}
+            {status === 'error' && <p className="download-error">⚠️ {error}</p>}
 
             {status === 'done' && result?.saved_path && (
-              <p className="download-saved">📁 Saved to <code>{result.saved_path}</code></p>
+              <p className="download-saved">
+                📁 Saved to <code>{result.saved_path}</code>
+              </p>
             )}
             {status === 'done' && result?.save_error && (
-              <p className="download-error">⚠️ Could not save to your folder: {result.save_error}</p>
+              <p className="download-error">
+                ⚠️ Could not save to your folder: {result.save_error}
+              </p>
             )}
             {revealError && <p className="download-error">⚠️ {revealError}</p>}
 
@@ -483,7 +546,9 @@ export default function App() {
               className={`btn-download-secondary${!result || converting ? ' btn-download-secondary--disabled' : ''}`}
               download={result?.download_name}
               aria-disabled={!result || converting}
-              onClick={e => { if (!result || converting) e.preventDefault() }}
+              onClick={(e) => {
+                if (!result || converting) e.preventDefault()
+              }}
             >
               ⬇️ Download a copy instead
             </a>
@@ -494,7 +559,7 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        <span>SchemGen2 v2.1.0</span>
+        <span>SchemGen2{version ? ` v${version}` : ''}</span>
         <span>Rust + Actix-web · Vite React · CIEDE2000 · Batch</span>
       </footer>
     </div>

@@ -4,14 +4,16 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use actix_web::{web, HttpResponse, get, post};
-use actix_multipart::form::{MultipartForm, tempfile::TempFile, text::Text};
+use actix_multipart::form::{tempfile::TempFile, text::Text, MultipartForm};
+use actix_web::{get, post, web, HttpResponse};
 use tokio::sync::{Mutex, Semaphore};
 use uuid::Uuid;
 
 use crate::palette::Palette;
 use crate::savedir;
-use crate::types::{ConversionJob, ConversionOptions, ConversionResult, JobStatus, LightingOptions, ProgressEvent};
+use crate::types::{
+    ConversionJob, ConversionOptions, ConversionResult, JobStatus, LightingOptions, ProgressEvent,
+};
 
 /// Global payload / multipart total limit. Raised well above the single-file
 /// 300 MB so batch uploads of many GLBs fit in one request.
@@ -90,14 +92,24 @@ struct SaveTarget {
 
 // ---- Field parsing helpers --------------------------------------------------
 
-fn is_true(s: &str) -> bool { s.to_lowercase() == "true" }
+fn is_true(s: &str) -> bool {
+    s.to_lowercase() == "true"
+}
 
 fn text_or(s: &Text<String>, default: &str) -> String {
-    if s.as_str().trim().is_empty() { default.to_string() } else { s.as_str().trim().to_string() }
+    if s.as_str().trim().is_empty() {
+        default.to_string()
+    } else {
+        s.as_str().trim().to_string()
+    }
 }
 
 fn text_bool(s: &Text<String>, default: bool) -> bool {
-    if s.as_str().trim().is_empty() { default } else { is_true(s.as_str()) }
+    if s.as_str().trim().is_empty() {
+        default
+    } else {
+        is_true(s.as_str())
+    }
 }
 
 fn text_f32(s: &Text<String>, default: f32) -> f32 {
@@ -110,11 +122,16 @@ fn text_u32(s: &Text<String>, default: u32) -> u32 {
 
 fn text_opt_f32(s: &Text<String>) -> Option<f32> {
     let v = s.as_str().trim();
-    if v.is_empty() { None } else { v.parse().ok() }
+    if v.is_empty() {
+        None
+    } else {
+        v.parse().ok()
+    }
 }
 
 fn opt_f32(field: &Option<Text<String>>, default: f32) -> f32 {
-    field.as_ref()
+    field
+        .as_ref()
         .and_then(|t| t.as_str().trim().parse().ok())
         .unwrap_or(default)
 }
@@ -123,7 +140,9 @@ fn opt_f32(field: &Option<Text<String>>, default: f32) -> f32 {
 /// the sampler's own default direction is a perfectly good answer.
 fn parse_direction(field: &Option<Text<String>>) -> Option<[f32; 3]> {
     let raw = field.as_ref()?;
-    let parts: Vec<f32> = raw.as_str().split(',')
+    let parts: Vec<f32> = raw
+        .as_str()
+        .split(',')
         .filter_map(|p| p.trim().parse().ok())
         .collect();
     match parts[..] {
@@ -164,12 +183,17 @@ impl_lighting_fields!(ConvertForm);
 impl_lighting_fields!(BatchConvertForm);
 
 fn opt_text(field: &Option<Text<String>>) -> String {
-    field.as_ref().map(|t| t.as_str().trim().to_string()).unwrap_or_default()
+    field
+        .as_ref()
+        .map(|t| t.as_str().trim().to_string())
+        .unwrap_or_default()
 }
 
 /// Auto-save is on when a folder was given and the toggle is not explicitly off.
 fn wants_auto_save(auto_save: &Option<Text<String>>, raw_dir: &str) -> bool {
-    if raw_dir.is_empty() { return false; }
+    if raw_dir.is_empty() {
+        return false;
+    }
     match auto_save {
         Some(t) if !t.as_str().trim().is_empty() => is_true(t.as_str()),
         _ => true,
@@ -189,6 +213,7 @@ fn default_block_name(no_color_block: &str) -> String {
 }
 
 /// Build shared conversion options from the common multipart text fields.
+#[allow(clippy::too_many_arguments)]
 fn options_from_fields(
     max_size: &Text<String>,
     voxel_size: &Text<String>,
@@ -227,7 +252,11 @@ fn options_for_preview(form: &ConvertForm, filename: &str) -> ConversionOptions 
         contrast: text_f32(&form.contrast, 1.0).clamp(0.0, 3.0),
         saturation: text_f32(&form.saturation, 1.0).clamp(0.0, 3.0),
         default_block_name: "minecraft:white_concrete".to_string(),
-        schematic_name: Path::new(filename).file_stem().and_then(|s| s.to_str()).unwrap_or("preview").to_string(),
+        schematic_name: Path::new(filename)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("preview")
+            .to_string(),
         lighting: form.lighting(),
     }
 }
@@ -328,7 +357,8 @@ fn spawn_convert_job(
     tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
-            let result = crate::converter::convert(&input, &output, &options, &palette, progress).await;
+            let result =
+                crate::converter::convert(&input, &output, &options, &palette, progress).await;
             finish_job(&jobs, &jid, result, save, Path::new(&output)).await;
         });
     });
@@ -337,38 +367,61 @@ fn spawn_convert_job(
 // ---- Handlers ---------------------------------------------------------------
 
 #[post("/api/preview")]
-async fn preview_handler(state: web::Data<Arc<AppState>>, MultipartForm(form): MultipartForm<ConvertForm>) -> HttpResponse {
-    let fname = form.file.file_name.clone().unwrap_or_else(|| "preview.glb".to_string());
+async fn preview_handler(
+    state: web::Data<Arc<AppState>>,
+    MultipartForm(form): MultipartForm<ConvertForm>,
+) -> HttpResponse {
+    let fname = form
+        .file
+        .file_name
+        .clone()
+        .unwrap_or_else(|| "preview.glb".to_string());
     if !is_glb_or_gltf(&fname) {
-        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Only .glb / .gltf files are supported"}));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Only .glb / .gltf files are supported"}));
     }
     let input = form.file.file.path().to_path_buf();
     // TempFile uses a .tmp path; voxelize.py needs a real GLB/GLTF extension.
-    let preview_ext = if fname.to_lowercase().ends_with(".gltf") { "gltf" } else { "glb" };
-    let preview_input = std::env::temp_dir().join(format!("schemgen_preview_{}.{}", Uuid::new_v4(), preview_ext));
+    let preview_ext = if fname.to_lowercase().ends_with(".gltf") {
+        "gltf"
+    } else {
+        "glb"
+    };
+    let preview_input = std::env::temp_dir().join(format!(
+        "schemgen_preview_{}.{}",
+        Uuid::new_v4(),
+        preview_ext
+    ));
     if let Err(e) = std::fs::copy(&input, &preview_input) {
-        return HttpResponse::InternalServerError().json(serde_json::json!({"error": format!("Could not prepare preview input: {e}")}));
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": format!("Could not prepare preview input: {e}")}));
     }
-    let output = std::env::temp_dir().join(format!("schemgen_preview_{}.litematic", Uuid::new_v4()));
+    let output =
+        std::env::temp_dir().join(format!("schemgen_preview_{}.litematic", Uuid::new_v4()));
     let options = options_for_preview(&form, &fname);
     let palette = state.palette.clone();
     let input_s = preview_input.to_string_lossy().to_string();
     let output_s = output.to_string_lossy().to_string();
     let result = tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-        rt.block_on(crate::converter::preview_litematic(&input_s, &output_s, &options, &palette))
-    }).await;
+        rt.block_on(crate::converter::preview_litematic(
+            &input_s, &output_s, &options, &palette,
+        ))
+    })
+    .await;
     let preview = match result {
         Ok(Ok(preview)) => preview,
         Ok(Err(e)) => {
             let _ = std::fs::remove_file(&output);
             let _ = std::fs::remove_file(&preview_input);
-            return HttpResponse::InternalServerError().json(serde_json::json!({"error": format!("Preview failed: {e}")}));
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": format!("Preview failed: {e}")}));
         }
         Err(e) => {
             let _ = std::fs::remove_file(&output);
             let _ = std::fs::remove_file(&preview_input);
-            return HttpResponse::InternalServerError().json(serde_json::json!({"error": format!("Preview task failed: {e}")}));
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": format!("Preview task failed: {e}")}));
         }
     };
     let litematic_verified = output.exists();
@@ -384,20 +437,34 @@ async fn preview_handler(state: web::Data<Arc<AppState>>, MultipartForm(form): M
 #[post("/api/convert")]
 async fn convert_handler(
     state: web::Data<Arc<AppState>>,
-    MultipartForm(mut form): MultipartForm<ConvertForm>,
+    MultipartForm(form): MultipartForm<ConvertForm>,
 ) -> HttpResponse {
-    let fname = form.file.file_name.clone().unwrap_or_else(|| "unknown".to_string());
+    let fname = form
+        .file
+        .file_name
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
     if !is_glb_or_gltf(&fname) {
         return HttpResponse::BadRequest()
             .json(serde_json::json!({"error": "Only .glb / .gltf files are supported"}));
     }
 
     let mut options = options_from_fields(
-        &form.max_size, &form.voxel_size, &form.ram_limit, &form.dither, &form.color_sampling,
-        &form.brightness, &form.contrast, &form.saturation, &form.no_color_block,
+        &form.max_size,
+        &form.voxel_size,
+        &form.ram_limit,
+        &form.dither,
+        &form.color_sampling,
+        &form.brightness,
+        &form.contrast,
+        &form.saturation,
+        &form.no_color_block,
         form.lighting(),
     );
-    let base = Path::new(&fname).file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+    let base = Path::new(&fname)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("output");
     options.schematic_name = text_or(&form.schematic_name, base);
 
     let job_id = Uuid::new_v4().to_string();
@@ -405,7 +472,9 @@ async fn convert_handler(
     let out_path = state.output_dir.join(format!("{job_id}.litematic"));
 
     let mut download_name = options.schematic_name.clone();
-    if !download_name.ends_with(".litematic") { download_name.push_str(".litematic"); }
+    if !download_name.ends_with(".litematic") {
+        download_name.push_str(".litematic");
+    }
 
     // Optional: write the finished schematic straight into a folder chosen in
     // the UI (e.g. .minecraft/schematics). Fail loudly here rather than convert
@@ -413,7 +482,10 @@ async fn convert_handler(
     let raw_dir = opt_text(&form.output_dir);
     let save = if wants_auto_save(&form.auto_save, &raw_dir) {
         match savedir::prepare(&raw_dir) {
-            Ok(dir) => Some(SaveTarget { dir, filename: savedir::sanitize_filename(&download_name) }),
+            Ok(dir) => Some(SaveTarget {
+                dir,
+                filename: savedir::sanitize_filename(&download_name),
+            }),
             Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
         }
     } else {
@@ -426,15 +498,18 @@ async fn convert_handler(
             .json(serde_json::json!({"error": "Failed to save uploaded file"}));
     }
 
-    state.jobs.lock().await.insert(job_id.clone(), ConversionJob {
-        status: JobStatus::Running,
-        progress: 0.0,
-        message: "Starting...".to_string(),
-        download_name: download_name.clone(),
-        output_path: out_path.to_str().unwrap().to_string(),
-        saved_path: None,
-        save_error: None,
-    });
+    state.jobs.lock().await.insert(
+        job_id.clone(),
+        ConversionJob {
+            status: JobStatus::Running,
+            progress: 0.0,
+            message: "Starting...".to_string(),
+            download_name: download_name.clone(),
+            output_path: out_path.to_str().unwrap().to_string(),
+            saved_path: None,
+            save_error: None,
+        },
+    );
 
     spawn_convert_job(
         Arc::clone(&state.jobs),
@@ -464,8 +539,15 @@ async fn convert_batch_handler(
     }
 
     let base_options = options_from_fields(
-        &form.max_size, &form.voxel_size, &form.ram_limit, &form.dither, &form.color_sampling,
-        &form.brightness, &form.contrast, &form.saturation, &form.no_color_block,
+        &form.max_size,
+        &form.voxel_size,
+        &form.ram_limit,
+        &form.dither,
+        &form.color_sampling,
+        &form.brightness,
+        &form.contrast,
+        &form.saturation,
+        &form.no_color_block,
         form.lighting(),
     );
 
@@ -481,13 +563,22 @@ async fn convert_batch_handler(
     };
 
     // Persist each file and register its job.
-    let mut pending: Vec<(String, String, String, ConversionOptions, Option<SaveTarget>)> = Vec::new();
+    let mut pending: Vec<(
+        String,
+        String,
+        String,
+        ConversionOptions,
+        Option<SaveTarget>,
+    )> = Vec::new();
     let mut response_jobs: Vec<serde_json::Value> = Vec::new();
     // Two identically named models in one batch must not overwrite each other.
     let mut used_names: HashSet<String> = HashSet::new();
 
     for file in form.files {
-        let fname = file.file_name.clone().unwrap_or_else(|| "model.glb".to_string());
+        let fname = file
+            .file_name
+            .clone()
+            .unwrap_or_else(|| "model.glb".to_string());
         if !is_glb_or_gltf(&fname) {
             continue;
         }
@@ -505,11 +596,16 @@ async fn convert_batch_handler(
         options.schematic_name = stem.clone();
 
         let mut download_name = stem;
-        if !download_name.ends_with(".litematic") { download_name.push_str(".litematic"); }
+        if !download_name.ends_with(".litematic") {
+            download_name.push_str(".litematic");
+        }
 
         let save = save_dir.as_ref().map(|dir| SaveTarget {
             dir: dir.clone(),
-            filename: savedir::dedupe_filename(&savedir::sanitize_filename(&download_name), &mut used_names),
+            filename: savedir::dedupe_filename(
+                &savedir::sanitize_filename(&download_name),
+                &mut used_names,
+            ),
         });
 
         if let Err(e) = file.file.persist(&glb_path) {
@@ -517,17 +613,26 @@ async fn convert_batch_handler(
             continue;
         }
 
-        state.jobs.lock().await.insert(job_id.clone(), ConversionJob {
-            status: JobStatus::Running,
-            progress: 0.0,
-            message: "Queued...".to_string(),
-            download_name,
-            output_path: out_path.to_str().unwrap().to_string(),
-            saved_path: None,
-            save_error: None,
-        });
+        state.jobs.lock().await.insert(
+            job_id.clone(),
+            ConversionJob {
+                status: JobStatus::Running,
+                progress: 0.0,
+                message: "Queued...".to_string(),
+                download_name,
+                output_path: out_path.to_str().unwrap().to_string(),
+                saved_path: None,
+                save_error: None,
+            },
+        );
 
-        pending.push((job_id.clone(), glb_path.display().to_string(), out_path.display().to_string(), options, save));
+        pending.push((
+            job_id.clone(),
+            glb_path.display().to_string(),
+            out_path.display().to_string(),
+            options,
+            save,
+        ));
         response_jobs.push(serde_json::json!({ "job_id": job_id, "filename": fname }));
     }
 
@@ -559,9 +664,11 @@ async fn convert_batch_handler(
                 let result = tokio::task::spawn_blocking(move || {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async move {
-                        crate::converter::convert(&input, &output, &options, &palette, progress).await
+                        crate::converter::convert(&input, &output, &options, &palette, progress)
+                            .await
                     })
-                }).await;
+                })
+                .await;
 
                 let converted = match result {
                     Ok(r) => r,
@@ -593,18 +700,30 @@ async fn download_handler(
 ) -> HttpResponse {
     let job_id = path.into_inner();
     let out_path = state.output_dir.join(format!("{job_id}.litematic"));
-    if !out_path.exists() { return HttpResponse::NotFound().body("File not found"); }
+    if !out_path.exists() {
+        return HttpResponse::NotFound().body("File not found");
+    }
 
-    let dn = state.jobs.lock().await.get(&job_id)
+    let dn = state
+        .jobs
+        .lock()
+        .await
+        .get(&job_id)
         .map(|j| j.download_name.clone())
         .unwrap_or_else(|| "output.litematic".to_string());
 
     match tokio::fs::read(&out_path).await {
         Ok(data) => HttpResponse::Ok()
             .insert_header(("Content-Type", "application/octet-stream"))
-            .insert_header(("Content-Disposition", format!("attachment; filename=\"{dn}\"")))
+            .insert_header((
+                "Content-Disposition",
+                format!("attachment; filename=\"{dn}\""),
+            ))
             .body(data),
-        Err(e) => { log::error!("Download error: {e}"); HttpResponse::InternalServerError().body("Read error") }
+        Err(e) => {
+            log::error!("Download error: {e}");
+            HttpResponse::InternalServerError().body("Read error")
+        }
     }
 }
 
@@ -617,7 +736,11 @@ async fn progress_handler(
     let jobs = state.jobs.lock().await;
     match jobs.get(&job_id) {
         Some(job) => {
-            let status = match job.status { JobStatus::Done => "done", JobStatus::Running => "running", JobStatus::Error => "error" };
+            let status = match job.status {
+                JobStatus::Done => "done",
+                JobStatus::Running => "running",
+                JobStatus::Error => "error",
+            };
             HttpResponse::Ok().json(serde_json::json!({
                 "status": status,
                 "progress": job.progress,
@@ -627,7 +750,7 @@ async fn progress_handler(
                 "save_error": job.save_error,
             }))
         }
-        None => HttpResponse::NotFound().json(serde_json::json!({"error": "Unknown job"}))
+        None => HttpResponse::NotFound().json(serde_json::json!({"error": "Unknown job"})),
     }
 }
 
@@ -653,10 +776,13 @@ async fn check_output_dir_handler(body: web::Json<OutputDirRequest>) -> HttpResp
 /// Likely Litematica schematic folders on this machine, for one-click picking.
 #[get("/api/output-dir/suggestions")]
 async fn output_dir_suggestions_handler() -> HttpResponse {
-    let items: Vec<serde_json::Value> = savedir::suggestions().into_iter()
-        .map(|(path, exists)| serde_json::json!({
-            "path": path.display().to_string(), "exists": exists
-        }))
+    let items: Vec<serde_json::Value> = savedir::suggestions()
+        .into_iter()
+        .map(|(path, exists)| {
+            serde_json::json!({
+                "path": path.display().to_string(), "exists": exists
+            })
+        })
         .collect();
     HttpResponse::Ok().json(serde_json::json!({ "suggestions": items }))
 }
@@ -675,12 +801,17 @@ async fn save_to_folder_handler(
     let (out_path, download_name) = {
         let jobs = state.jobs.lock().await;
         match jobs.get(&job_id) {
-            Some(job) if job.status == JobStatus::Done =>
-                (PathBuf::from(job.output_path.clone()), job.download_name.clone()),
-            Some(_) => return HttpResponse::Conflict()
-                .json(serde_json::json!({"error": "Conversion is not finished yet"})),
-            None => return HttpResponse::NotFound()
-                .json(serde_json::json!({"error": "Unknown job"})),
+            Some(job) if job.status == JobStatus::Done => (
+                PathBuf::from(job.output_path.clone()),
+                job.download_name.clone(),
+            ),
+            Some(_) => {
+                return HttpResponse::Conflict()
+                    .json(serde_json::json!({"error": "Conversion is not finished yet"}))
+            }
+            None => {
+                return HttpResponse::NotFound().json(serde_json::json!({"error": "Unknown job"}))
+            }
         }
     };
 
@@ -711,10 +842,7 @@ async fn save_to_folder_handler(
 /// the browser are on the same machine, so this beats downloading a second copy
 /// of a file that already exists locally.
 #[post("/api/reveal/{job_id}")]
-async fn reveal_handler(
-    state: web::Data<Arc<AppState>>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn reveal_handler(state: web::Data<Arc<AppState>>, path: web::Path<String>) -> HttpResponse {
     let job_id = path.into_inner();
 
     // Prefer the copy in the user's folder; fall back to the server's own output.
@@ -722,12 +850,17 @@ async fn reveal_handler(
         let jobs = state.jobs.lock().await;
         match jobs.get(&job_id) {
             Some(job) if job.status == JobStatus::Done => PathBuf::from(
-                job.saved_path.clone().unwrap_or_else(|| job.output_path.clone())
+                job.saved_path
+                    .clone()
+                    .unwrap_or_else(|| job.output_path.clone()),
             ),
-            Some(_) => return HttpResponse::Conflict()
-                .json(serde_json::json!({"error": "Conversion is not finished yet"})),
-            None => return HttpResponse::NotFound()
-                .json(serde_json::json!({"error": "Unknown job"})),
+            Some(_) => {
+                return HttpResponse::Conflict()
+                    .json(serde_json::json!({"error": "Conversion is not finished yet"}))
+            }
+            None => {
+                return HttpResponse::NotFound().json(serde_json::json!({"error": "Unknown job"}))
+            }
         }
     };
 
@@ -783,8 +916,8 @@ async fn system_handler() -> HttpResponse {
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     // Raise actix-multipart's total limit so batch uploads of many GLBs fit.
-    let mf_config = actix_multipart::form::MultipartFormConfig::default()
-        .total_limit(MAX_PAYLOAD_BYTES);
+    let mf_config =
+        actix_multipart::form::MultipartFormConfig::default().total_limit(MAX_PAYLOAD_BYTES);
     cfg.app_data(mf_config)
         .service(preview_handler)
         .service(convert_handler)

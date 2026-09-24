@@ -1,89 +1,50 @@
 // API client for SchemGen2 backend
 
+import { conversionFields } from './settingsDefaults.js'
+
 const BASE = '/api'
 
-export async function uploadAndConvert(file, options = {}) {
-  const form = new FormData()
-  form.append('file', file)
-
-  const defaults = {
-    max_size: '128',
-    voxel_size: '',
-    ram_limit: '4.0',
-    dither: 'true',
-    color_sampling: 'true',
-    brightness: '0',
-    contrast: '1',
-    saturation: '1',
-    no_color_block: 'white',
-    schematic_name: '',
-    output_dir: '',
-    auto_save: 'false',
-    light_dir: '0.35,0.85,0.40',
-    light_ambient: '0.32',
-    light_gloss: '0.5',
-    specular: '1.1',
-    highlight_rejection: '0.75',
-    highlight_recovery: '1',
-    delight: '0',
+function appendFields(form, fields) {
+  for (const [k, v] of Object.entries(fields)) {
+    if (v !== undefined && v !== null) form.append(k, String(v))
   }
+}
 
-  const params = { ...defaults, ...options }
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null) {
-      form.append(k, String(v))
-    }
+// Where a finished schematic is copied: only when the toggle is on and a
+// folder was typed.
+function outputFields(settings) {
+  const autoSave = !!settings.auto_save
+  return {
+    output_dir: autoSave ? (settings.output_dir || '').trim() : '',
+    auto_save: autoSave ? 'true' : 'false',
   }
+}
 
-  const res = await fetch(`${BASE}/convert`, { method: 'POST', body: form })
+async function postForm(path, form, fallbackError, signal) {
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', body: form, signal })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Upload failed' }))
+    const err = await res.json().catch(() => ({ error: fallbackError }))
     throw new Error(err.error || `HTTP ${res.status}`)
   }
   return res.json()
 }
 
-export async function uploadAndConvertBatch(files, options = {}) {
+export async function uploadAndConvert(file, settings) {
   const form = new FormData()
-  for (const f of files) {
-    form.append('files', f)
-  }
+  form.append('file', file)
+  appendFields(form, { ...conversionFields(settings), ...outputFields(settings) })
+  return postForm('/convert', form, 'Upload failed')
+}
 
-  const defaults = {
-    max_size: '128',
-    voxel_size: '',
-    ram_limit: '4.0',
-    threads: '4',
-    dither: 'true',
-    color_sampling: 'true',
-    brightness: '0',
-    contrast: '1',
-    saturation: '1',
-    no_color_block: 'white',
-    output_dir: '',
-    auto_save: 'false',
-    light_dir: '0.35,0.85,0.40',
-    light_ambient: '0.32',
-    light_gloss: '0.5',
-    specular: '1.1',
-    highlight_rejection: '0.75',
-    highlight_recovery: '1',
-    delight: '0',
-  }
-
-  const params = { ...defaults, ...options }
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null) {
-      form.append(k, String(v))
-    }
-  }
-
-  const res = await fetch(`${BASE}/convert-batch`, { method: 'POST', body: form })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Batch upload failed' }))
-    throw new Error(err.error || `HTTP ${res.status}`)
-  }
-  return res.json()
+export async function uploadAndConvertBatch(files, settings) {
+  const form = new FormData()
+  for (const f of files) form.append('files', f)
+  appendFields(form, {
+    ...conversionFields(settings),
+    ...outputFields(settings),
+    threads: settings.threads,
+  })
+  return postForm('/convert-batch', form, 'Batch upload failed')
 }
 
 export async function pollProgress(jobId) {
@@ -104,29 +65,17 @@ export async function fetchPalette() {
   return res.json()
 }
 
-export async function fetchLitematicPreview(file, options = {}, signal) {
+export async function fetchHealth() {
+  const res = await fetch(`${BASE}/health`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+export async function fetchLitematicPreview(file, settings, signal) {
   const form = new FormData()
   form.append('file', file)
-  const defaults = {
-    max_size: '48', voxel_size: '', ram_limit: '4.0', dither: 'true', color_sampling: 'true',
-    brightness: '0', contrast: '1', saturation: '1', no_color_block: 'white', schematic_name: 'preview',
-    light_dir: '0.35,0.85,0.40',
-    light_ambient: '0.32',
-    light_gloss: '0.5',
-    specular: '1.1',
-    highlight_rejection: '0.75',
-    highlight_recovery: '1',
-    delight: '0',
-  }
-  for (const [k, v] of Object.entries({ ...defaults, ...options })) {
-    if (v !== undefined && v !== null) form.append(k, String(v))
-  }
-  const res = await fetch(`${BASE}/preview`, { method: 'POST', body: form, signal })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-    throw new Error(err.error || `HTTP ${res.status}`)
-  }
-  return res.json()
+  appendFields(form, { ...conversionFields(settings), schematic_name: 'preview' })
+  return postForm('/preview', form, 'Preview failed', signal)
 }
 
 // ---- Output folder ---------------------------------------------------------

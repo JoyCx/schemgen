@@ -10,13 +10,20 @@ export default function Settings({ settings, onChange, savedPath = '' }) {
   const [dirState, setDirState] = useState(null) // { ok, path } | { ok: false, error }
   const [checking, setChecking] = useState(false)
 
-  useEffect(() => { fetchOutputDirSuggestions().then(setSuggestions).catch(() => {}) }, [])
+  useEffect(() => {
+    fetchOutputDirSuggestions()
+      .then(setSuggestions)
+      .catch(() => {})
+  }, [])
 
   // Verify the folder shortly after typing stops, and again once a schematic
   // has been written — a folder reported as "will be created" exists by then.
   useEffect(() => {
     const path = settings.output_dir.trim()
-    if (!settings.auto_save || !path) { setDirState(null); return }
+    if (!settings.auto_save || !path) {
+      setDirState(null)
+      return
+    }
     let cancelled = false
     setChecking(true)
     const t = setTimeout(async () => {
@@ -29,7 +36,11 @@ export default function Settings({ settings, onChange, savedPath = '' }) {
         if (!cancelled) setChecking(false)
       }
     }, 600)
-    return () => { cancelled = true; clearTimeout(t); setChecking(false) }
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+      setChecking(false)
+    }
   }, [settings.output_dir, settings.auto_save, savedPath])
 
   return (
@@ -42,7 +53,8 @@ export default function Settings({ settings, onChange, savedPath = '' }) {
             type="number"
             value={settings.max_size}
             onChange={(e) => update('max_size', e.target.value)}
-            min="8" max="512"
+            min="8"
+            max="512"
           />
         </label>
 
@@ -62,7 +74,9 @@ export default function Settings({ settings, onChange, savedPath = '' }) {
             type="number"
             value={settings.ram_limit}
             onChange={(e) => update('ram_limit', e.target.value)}
-            min="0.5" max="32" step="0.5"
+            min="0.5"
+            max="32"
+            step="0.5"
           />
         </label>
 
@@ -72,7 +86,9 @@ export default function Settings({ settings, onChange, savedPath = '' }) {
             type="number"
             value={settings.threads}
             onChange={(e) => update('threads', e.target.value)}
-            min="1" max="32" step="1"
+            min="1"
+            max="32"
+            step="1"
           />
         </label>
 
@@ -135,7 +151,9 @@ export default function Settings({ settings, onChange, savedPath = '' }) {
         )}
 
         {settings.auto_save && (
-          <p className={`output-dir-status${dirState && !dirState.ok ? ' output-dir-status--bad' : ''}`}>
+          <p
+            className={`output-dir-status${dirState && !dirState.ok ? ' output-dir-status--bad' : ''}`}
+          >
             {checking
               ? 'Checking folder…'
               : dirState?.ok

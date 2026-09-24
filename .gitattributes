@@ -1,0 +1,18 @@
+# Source is LF everywhere, including Windows checkouts, so `cargo fmt --check`
+# and `prettier --check` agree on every CI runner.
+* text=auto eol=lf
+
+# Batch files need CRLF to run reliably under cmd.exe; keep them byte-for-byte.
+*.bat -text
+
+# Data tables are committed exactly as generated.
+backend/data/*.json -text
+
+*.png binary
+*.jpg binary
+*.glb binary
+*.bin binary
+*.litematic binary
+*.schem binary
+*.nbt binary
+*.jar binary
