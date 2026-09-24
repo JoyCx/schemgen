@@ -49,6 +49,9 @@ FILES:
                           also SCHEMGEN_UI_DIR)
     --job-ttl <HOURS>     Forget finished jobs and delete their files after this
                           long (default 24; 0 keeps them until restart)
+    --textures <PATH>     Block textures for the web preview: a Minecraft client
+                          jar, a resource pack or a folder of PNGs (default: the
+                          newest client jar a launcher keeps; also SCHEMGEN_TEXTURES)
 
 CONVERSION:
     --target <VERSION>    Default Minecraft version (default 1.21.8)
@@ -154,6 +157,7 @@ const VALUE_OPTS: &[&str] = &[
     "token-file",
     "work-dir",
     "ui-dir",
+    "textures",
     "job-ttl",
     "max-jobs",
     "pid-file",

@@ -26,6 +26,7 @@ mod shared;
 mod sse;
 mod state;
 mod sweep;
+mod textures;
 mod v1;
 mod v2;
 
@@ -61,6 +62,9 @@ pub struct ServerConfig {
     pub exit_with_stdin: bool,
     /// Write the process id here while running.
     pub pid_file: Option<PathBuf>,
+    /// Block textures for the preview: a client jar, resource pack or folder.
+    /// `None` looks for a launcher's client jar.
+    pub textures: Option<PathBuf>,
 }
 
 impl ServerConfig {
@@ -79,6 +83,7 @@ impl ServerConfig {
             max_upload: DEFAULT_MAX_UPLOAD,
             exit_with_stdin: false,
             pid_file: None,
+            textures: None,
         }
     }
 }
@@ -145,12 +150,15 @@ pub fn build_state(config: &mut ServerConfig) -> std::io::Result<Arc<AppState>> 
         job_ttl: config.job_ttl.filter(|d| !d.is_zero()),
         slots: Arc::new(Semaphore::new(config.max_jobs.max(1))),
         max_upload: config.max_upload,
+        textures: std::sync::OnceLock::new(),
+        textures_path: config.textures.clone(),
     }))
 }
 
 /// Every API route. The static UI, when there is one, is mounted after.
 pub fn configure_api(cfg: &mut web::ServiceConfig) {
     cfg.configure(shared::configure)
+        .configure(textures::configure)
         .configure(v2::configure)
         .configure(v1::configure)
         .service(preview::preview)

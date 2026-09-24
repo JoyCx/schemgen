@@ -446,6 +446,58 @@ async fn uploads_cannot_reach_files_beside_them() {
 }
 
 #[actix_web::test]
+async fn block_textures_come_from_the_configured_source() {
+    let mut cfg = config("textures");
+    let jar = cfg.work_dir.join("client.jar");
+    std::fs::create_dir_all(&cfg.work_dir).unwrap();
+    crate::textures::tests::write_zip(
+        &jar,
+        &[(
+            "assets/minecraft/textures/block/stone.png",
+            b"\x89PNG stone".as_slice(),
+        )],
+    );
+    cfg.textures = Some(jar);
+    let app = service!(build_state(&mut cfg).unwrap());
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/api/textures/block/stone.png")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.headers().get("content-type").unwrap(), "image/png");
+    assert_eq!(test::read_body(resp).await.as_ref(), b"\x89PNG stone");
+
+    let missing = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/api/textures/block/dirt.png")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    let bad = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/api/textures/block/Stone.png")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+
+    let info: Value = test::call_and_read_body_json(
+        &app,
+        test::TestRequest::get().uri("/api/textures").to_request(),
+    )
+    .await;
+    assert_eq!(info["source"], "jar");
+    assert_eq!(info["textures"], 1);
+}
+
+#[actix_web::test]
 async fn v1_routes_still_work() {
     let state = build_state(&mut config("v1")).unwrap();
     let app = service!(Arc::clone(&state));

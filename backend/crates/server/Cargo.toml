@@ -17,6 +17,7 @@ actix-files.workspace = true
 actix-multipart.workspace = true
 actix-web.workspace = true
 base64.workspace = true
+flate2.workspace = true
 futures-util.workspace = true
 log.workspace = true
 serde.workspace = true

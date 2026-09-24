@@ -1735,6 +1735,7 @@ dependencies = [
  "actix-multipart",
  "actix-web",
  "base64",
+ "flate2",
  "futures-util",
  "log",
  "schemgen-core",

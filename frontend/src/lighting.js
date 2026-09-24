@@ -1,12 +1,12 @@
-// Shared light-direction math for the de-light pass.
+// Light-direction math for the de-light pass.
 //
-// The key light is stored as azimuth/elevation in *model* space rather than as
-// a camera-relative vector. The sampler has to remove the same light the
-// preview draws, and a camera-relative light would swing around every time the
-// user orbits — the same model would then convert differently depending on
-// where the camera happened to be. glTF and three.js share a Y-up
-// right-handed frame, so the vector built here crosses to the backend with no
-// conversion at either end.
+// The key light is a direction in *model* space, not relative to the camera:
+// the sampler has to remove the same light the preview draws, and a
+// camera-relative light would swing around every time the user orbits — the
+// same model would then convert differently depending on where the camera
+// happened to be. glTF and three.js share a Y-up right-handed frame, so the
+// vector crosses to the backend with no conversion at either end. The
+// settings form shows it as azimuth and elevation.
 
 const DEG = Math.PI / 180
 
@@ -25,19 +25,4 @@ export function lightAngles([x, y, z]) {
     azimuth: Math.atan2(x / len, z / len) / DEG,
     elevation: Math.asin(Math.min(1, Math.max(-1, y / len))) / DEG,
   }
-}
-
-// Mirrors the default lighting settings in backend/crates/core/src/settings.rs
-// (served as the defaults of GET /api/schema). The angles here
-// are that default direction (0.35, 0.85, 0.40) written as two numbers a slider
-// can hold.
-export const LIGHT_DEFAULTS = {
-  light_azimuth: 41,
-  light_elevation: 58,
-  light_ambient: 0.32,
-  light_gloss: 0.5,
-  specular: 1.1,
-  highlight_rejection: 0.75,
-  highlight_recovery: 1,
-  delight: 0,
 }

@@ -389,84 +389,94 @@ fn instance_version(dir: &Path) -> Option<String> {
     text(&profile["metadata"]["game_version"]).or_else(|| text(&profile["game_version"]))
 }
 
+/// Where the launchers keep their data on this platform. Each list holds the
+/// data folders that may exist; nothing here checks that they do.
+pub(crate) struct LauncherRoots {
+    /// The vanilla launcher's game folder (`.minecraft`).
+    pub minecraft: Vec<PathBuf>,
+    /// Prism Launcher's data folder: `instances/`, `libraries/`.
+    pub prism: Vec<PathBuf>,
+    /// MultiMC's folder: `instances/`, `libraries/`.
+    pub multimc: Vec<PathBuf>,
+    /// CurseForge's `minecraft` folder: `Instances/`, `Install/`.
+    pub curseforge: Vec<PathBuf>,
+    /// The Modrinth App's data folder: `profiles/`, `meta/`.
+    pub modrinth: Vec<PathBuf>,
+    pub downloads: Option<PathBuf>,
+}
+
+pub(crate) fn launcher_roots() -> LauncherRoots {
+    let mut roots = LauncherRoots {
+        minecraft: Vec::new(),
+        prism: Vec::new(),
+        multimc: Vec::new(),
+        curseforge: Vec::new(),
+        modrinth: Vec::new(),
+        downloads: None,
+    };
+    if cfg!(windows) {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let appdata = PathBuf::from(appdata);
+            roots.minecraft.push(appdata.join(".minecraft"));
+            roots.prism.push(appdata.join("PrismLauncher"));
+            roots.modrinth.push(appdata.join("com.modrinth.theseus"));
+            roots.modrinth.push(appdata.join("ModrinthApp"));
+        }
+    }
+    if let Some(home) = home_dir() {
+        if cfg!(target_os = "macos") {
+            let support = home.join("Library").join("Application Support");
+            roots.minecraft.push(support.join("minecraft"));
+            roots.prism.push(support.join("PrismLauncher"));
+            roots.modrinth.push(support.join("ModrinthApp"));
+        }
+        if cfg!(not(windows)) {
+            roots.minecraft.push(home.join(".minecraft"));
+            let share = home.join(".local").join("share");
+            roots.prism.push(share.join("PrismLauncher"));
+            roots.modrinth.push(share.join("ModrinthApp"));
+        }
+        roots
+            .curseforge
+            .push(home.join("curseforge").join("minecraft"));
+        roots.multimc.push(home.join("MultiMC"));
+        roots.downloads = Some(home.join("Downloads"));
+    }
+    roots
+}
+
 /// Likely Litematica schematic folders for this platform, each flagged with
 /// whether it already exists and, for launcher instances, which instance and
 /// Minecraft version it belongs to — so a UI can offer them as one-click
 /// choices and suggest the matching target.
 pub fn suggestions() -> Vec<Suggestion> {
     // Vanilla folders, then every launcher instance, then Downloads.
-    let mut vanilla: Vec<PathBuf> = Vec::new();
+    let roots = launcher_roots();
+    let vanilla: Vec<PathBuf> = roots
+        .minecraft
+        .iter()
+        .map(|m| m.join("schematics"))
+        .collect();
     let mut instances: Vec<(PathBuf, Instance)> = Vec::new();
     let mut scan = |root: PathBuf, launcher: &'static str, inner: &str| {
         instances.extend(instance_schematics(&root, launcher, inner));
     };
-    let mut downloads = None;
-
-    if cfg!(windows) {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let appdata = PathBuf::from(appdata);
-            vanilla.push(appdata.join(".minecraft").join("schematics"));
-            // Prism and MultiMC keep the game dir under <instance>/.minecraft.
-            scan(
-                appdata.join("PrismLauncher").join("instances"),
-                "Prism Launcher",
-                ".minecraft",
-            );
-            scan(
-                appdata.join("com.modrinth.theseus").join("profiles"),
-                "Modrinth App",
-                "",
-            );
-            scan(
-                appdata.join("ModrinthApp").join("profiles"),
-                "Modrinth App",
-                "",
-            );
-        }
+    // Prism and MultiMC keep the game dir under <instance>/.minecraft;
+    // CurseForge and the Modrinth App put it straight in the instance —
+    // CurseForge is where most Litematica users actually are.
+    for root in &roots.prism {
+        scan(root.join("instances"), "Prism Launcher", ".minecraft");
     }
-    if let Some(home) = home_dir() {
-        if cfg!(target_os = "macos") {
-            let support = home.join("Library").join("Application Support");
-            vanilla.push(support.join("minecraft").join("schematics"));
-            scan(
-                support.join("PrismLauncher").join("instances"),
-                "Prism Launcher",
-                ".minecraft",
-            );
-            scan(
-                support.join("ModrinthApp").join("profiles"),
-                "Modrinth App",
-                "",
-            );
-        }
-        if cfg!(not(windows)) {
-            vanilla.push(home.join(".minecraft").join("schematics"));
-            let share = home.join(".local").join("share");
-            scan(
-                share.join("PrismLauncher").join("instances"),
-                "Prism Launcher",
-                ".minecraft",
-            );
-            scan(
-                share.join("ModrinthApp").join("profiles"),
-                "Modrinth App",
-                "",
-            );
-        }
-        // CurseForge puts instances straight in the profile, with no inner
-        // .minecraft — this is where most Litematica users actually are.
-        scan(
-            home.join("curseforge").join("minecraft").join("Instances"),
-            "CurseForge",
-            "",
-        );
-        scan(
-            home.join("MultiMC").join("instances"),
-            "MultiMC",
-            ".minecraft",
-        );
-        downloads = Some(home.join("Downloads"));
+    for root in &roots.modrinth {
+        scan(root.join("profiles"), "Modrinth App", "");
     }
+    for root in &roots.curseforge {
+        scan(root.join("Instances"), "CurseForge", "");
+    }
+    for root in &roots.multimc {
+        scan(root.join("instances"), "MultiMC", ".minecraft");
+    }
+    let downloads = roots.downloads;
 
     let ordered = vanilla
         .into_iter()

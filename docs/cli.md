@@ -166,6 +166,7 @@ schemgen2 serve --port 0 --token-file ~/.schemgen/token --exit-with-stdin
 | `--token-file <PATH>` | | Read the token from PATH, or write a new random one there if it is missing |
 | `--work-dir <DIR>` | user cache folder | Where uploads and outputs are kept |
 | `--ui-dir <DIR>` | `frontend/dist` if found (or `SCHEMGEN_UI_DIR`) | Built web UI to serve at `/` |
+| `--textures <PATH>` | the newest client jar a launcher keeps | Block textures for the web preview: a Minecraft client jar, a resource pack or a folder of PNGs. Also `SCHEMGEN_TEXTURES`. |
 | `--job-ttl <HOURS>` | 24 | Forget finished jobs and delete their files after this long; 0 never |
 | `--target <VERSION>` | `1.21.8` | Default target for requests that do not name one |
 | `--max-jobs <N>` | CPU count | Conversions running at once |

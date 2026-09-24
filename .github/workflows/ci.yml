@@ -120,7 +120,44 @@ jobs:
       - run: npm ci
       - name: Lint
         run: npm run lint
+      - name: Types
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
       - name: Format
         run: npm run format:check
       - name: Build
         run: npm run build
+
+  e2e:
+    name: Web UI against the real server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - name: Build the server
+        working-directory: backend
+        run: cargo build --release --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build the UI
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Smoke test
+        working-directory: frontend
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7

@@ -1,7 +1,7 @@
 //! What every request handler shares.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::Semaphore;
@@ -9,6 +9,7 @@ use tokio::sync::Semaphore;
 use schemgen_core::{PaletteSet, Settings};
 
 use crate::jobs::JobStore;
+use crate::textures::Textures;
 
 pub struct AppState {
     /// The color table, and each target's palette from it.
@@ -30,4 +31,16 @@ pub struct AppState {
     pub slots: Arc<Semaphore>,
     /// Largest single upload accepted, in bytes.
     pub max_upload: u64,
+    /// Block textures for the preview; found on first use.
+    pub textures: OnceLock<Textures>,
+    /// Where `--textures` said to take them from.
+    pub textures_path: Option<PathBuf>,
+}
+
+impl AppState {
+    /// The block textures, looking for them the first time they are wanted.
+    pub fn textures(&self) -> &Textures {
+        self.textures
+            .get_or_init(|| Textures::discover(self.textures_path.as_deref()))
+    }
 }

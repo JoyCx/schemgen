@@ -35,4 +35,11 @@ export default defineConfig({
     // three.js alone is ~530 kB minified; warn only above that.
     chunkSizeWarningLimit: 600,
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx,js,jsx}'],
+    css: false,
+  },
 })

@@ -271,6 +271,12 @@ fn serve(args: &args::ParsedArgs) -> ExitCode {
             Some(dir) => Some(PathBuf::from(dir)),
             None => schemgen_server::find_ui_dir(),
         };
+        config.textures = args
+            .get("textures")
+            .map(str::to_string)
+            .or_else(|| std::env::var("SCHEMGEN_TEXTURES").ok())
+            .filter(|p| !p.trim().is_empty())
+            .map(PathBuf::from);
         let ttl_hours = args.number::<f64>("job-ttl", 24.0)?;
         if !(ttl_hours.is_finite() && ttl_hours >= 0.0) {
             return Err("--job-ttl must be a number of hours, 0 or more".into());

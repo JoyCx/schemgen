@@ -54,6 +54,8 @@ That is all any client needs. A client that renders a settings form reads
 | `POST` | `/api/output-dir/check` | Validate a folder without creating it |
 | `GET` | `/api/output-dir/suggestions` | Likely schematics folders on this machine |
 | `POST` | `/api/reveal-folder` | Open a folder in the host's file manager |
+| `GET` | `/api/textures` | Where block textures come from on this machine |
+| `GET` | `/api/textures/block/{name}.png` | One block texture, from the player's own Minecraft |
 
 Errors are JSON — `{"error": "…"}` — with a status that says whose fault it
 was: 400 for a bad request (the message names the field), 404 for an unknown
@@ -380,6 +382,26 @@ Limits: 1 GiB per model file; `max_size` at most 2048.
 Existing folders first. A folder inside a launcher instance (CurseForge, Prism
 Launcher, MultiMC, Modrinth App) carries the instance, the Minecraft version it
 runs when the launcher records one, and the target that suits it.
+
+### `GET /api/textures`, `/api/textures/block/{name}.png`
+
+Block textures for a preview, which SchemGen2 cannot ship: they are Mojang's.
+The server serves them from the Minecraft already on the machine — the newest
+release client jar a launcher keeps (vanilla, CurseForge, Prism Launcher,
+MultiMC, Modrinth App), or the client jar, resource pack or folder of PNGs
+named with `serve --textures` (or `SCHEMGEN_TEXTURES`). It looks the first time
+it is asked.
+
+```json
+{ "source": "jar", "path": "/home/me/.minecraft/versions/1.21.8/1.21.8.jar",
+  "version": "1.21.8", "textures": 1147 }
+```
+
+`source` is `"jar"`, `"folder"`, or `null` when there are none. A texture is
+named by its file stem — `stone`, `oak_log_top`, `quartz_block_side` — which is
+not always the block's ID; `404` means this source has no such texture, and a
+client should fall back to something else (the web UI tries a public copy, then
+the block's palette color).
 
 ## v1 (legacy)
 

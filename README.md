@@ -89,11 +89,14 @@ On Windows, [`run_server.bat`](run_server.bat) does that development pair for
 you: it builds the backend if needed, installs npm dependencies if needed,
 starts both and opens the browser.
 
-The web app adds what a CLI cannot: orbiting the model in 3D and dragging the
-key light direction, a low-resolution live block preview before you commit, a
-de-lit albedo view, the highlight-rejection mask, the palette grid, a batch
-queue, and a folder picker that finds the `schematics` folders of your
-CurseForge / Prism / MultiMC / Modrinth instances. See [docs/web.md](docs/web.md).
+The web app adds what a CLI cannot: the model and its blocks side by side in
+one 3D view (with a draggable split between them), a live low-resolution preview
+that follows every setting, the material list with counts in stacks and
+shulker boxes, a key-light handle to drag, a de-lit view of what the sampler
+reads, one queue for one model or many, and a folder picker that finds the
+`schematics` folders of your CurseForge / Prism / MultiMC / Modrinth instances.
+See [docs/web.md](docs/web.md); [docs/design.md](docs/design.md) is the screen,
+section by section.
 
 > The server is meant for the machine it runs on: it binds `127.0.0.1`, answers
 > only requests addressed to `localhost`, and refuses browser requests from
@@ -154,8 +157,8 @@ schemgen2/
 │   │                        the parity harness (crates/core/examples/parity.rs)
 │   ├── fixtures/            Small test models (tools/make_fixtures.py)
 │   └── data/                color_table_safe.json — the curated palette
-├── frontend/                Vite React web app
-└── docs/                    cli · api · web · pipeline · versions · roadmap
+├── frontend/                The web app: React + TypeScript, three.js, Vite
+└── docs/                    cli · api · web · design · pipeline · versions · roadmap
 ```
 
 ## Rebuilding the color table
@@ -178,7 +181,8 @@ light and only the curated anti-grief blocks are kept.
 
 ```bash
 cd backend && cargo test                              # core, server and CLI
-cd frontend && npm run lint && npm run build          # lint + production build
+cd frontend && npm run lint && npm run typecheck && npm test && npm run build
+cd frontend && npm run test:e2e                       # the built UI against the real server
 ```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of it on
