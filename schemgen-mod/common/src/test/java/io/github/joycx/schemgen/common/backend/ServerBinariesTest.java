@@ -61,6 +61,9 @@ class ServerBinariesTest {
         ServerBinaries.Resolution r = binaries(release(""), null).resolve(own.toString(), gameDir);
         assertEquals(new ServerBinaries.Found(own, "configured"), r);
 
+        ServerBinaries.Resolution relative = binaries(release(""), null).resolve("my-schemgen2", gameDir);
+        assertEquals(new ServerBinaries.Found(own, "configured"), relative, "relative to the game directory");
+
         ServerBinaries.Resolution missing = binaries(release(""), null).resolve("/no/such/schemgen2", gameDir);
         assertTrue(((ServerBinaries.Unavailable) missing).reason().contains("/no/such/schemgen2"));
     }

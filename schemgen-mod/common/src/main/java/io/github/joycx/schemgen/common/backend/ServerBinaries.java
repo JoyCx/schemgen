@@ -78,7 +78,7 @@ public final class ServerBinaries {
 
     public Resolution resolve(String configuredPath, Path gameDir) throws InterruptedException {
         if (configuredPath != null && !configuredPath.isBlank()) {
-            Path binary = Path.of(configuredPath.strip());
+            Path binary = gameDir.resolve(configuredPath.strip()); // a relative path is the game directory's, as for folders
             return Files.isRegularFile(binary)
                     ? new Found(binary, "configured")
                     : new Unavailable("The server binary set in the config does not exist: " + binary);
