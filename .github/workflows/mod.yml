@@ -1,0 +1,89 @@
+name: Mod
+
+# The Minecraft mod in schemgen-mod/. Its common module talks to the server,
+# so server changes run these jobs too.
+on:
+  push:
+    paths:
+      - 'schemgen-mod/**'
+      - 'backend/**'
+      - '.github/workflows/mod.yml'
+  pull_request:
+    paths:
+      - 'schemgen-mod/**'
+      - 'backend/**'
+      - '.github/workflows/mod.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: mod-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  common:
+    name: Common module and server integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      # The integration tests start a real schemgen2 and convert a fixture,
+      # which goes through the Python voxelizer.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.12'
+      - name: Install voxelizer dependencies
+        run: python -m pip install "trimesh[easy]" numpy scipy Pillow
+      - name: Build the server
+        working-directory: backend
+        run: cargo build --release --locked -p schemgen2
+      - name: Test
+        working-directory: schemgen-mod
+        env:
+          SCHEMGEN_BINARY: ${{ github.workspace }}/backend/target/release/schemgen2
+          SCHEMGEN_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: ./gradlew --stacktrace :common:test
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: common-test-reports
+          path: schemgen-mod/common/build/reports/tests/
+
+  fabric:
+    name: Fabric ${{ matrix.minecraft }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every version in schemgen-mod/settings.gradle.kts.
+        minecraft: ['1.21.1', '1.21.4', '1.21.8', '1.21.11']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build
+        working-directory: schemgen-mod
+        run: ./gradlew --stacktrace ":fabric:${{ matrix.minecraft }}:build"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: schemgen-fabric-${{ matrix.minecraft }}
+          path: schemgen-mod/fabric/versions/${{ matrix.minecraft }}/build/libs/*.jar
+          if-no-files-found: error

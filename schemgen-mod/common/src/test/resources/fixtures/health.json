@@ -1,0 +1,13 @@
+{
+  "api": 2,
+  "auth": true,
+  "data_version": 4440,
+  "name": "schemgen2",
+  "os": "linux",
+  "palette_blocks": 181,
+  "palette_entries": 181,
+  "schematic_version": 7,
+  "status": "ok",
+  "target": "1.21.8",
+  "version": "2.0.0"
+}

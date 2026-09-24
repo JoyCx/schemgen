@@ -1,0 +1,9 @@
+.gradle/
+# Also holds Stonecutter's processed sources (build/stonecutter-cache).
+build/
+# Loom's development clients (fabric/versions/<version>/run).
+run/
+# IDE files.
+.idea/
+*.iml
+out/
