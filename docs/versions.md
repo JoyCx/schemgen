@@ -68,6 +68,7 @@ belongs to a named target *is* that target.
 | CLI | `schemgen2 convert model.glb --target 1.20.4` |
 | API | `"target": "1.20.4"` in the `settings` JSON — see [api.md](api.md) |
 | Web UI | The *Minecraft* dropdown, remembered per machine. Picking a folder inside a launcher instance sets it to that instance's version. |
+| Mod | The game being played, mapped to its target; *Change* next to *Minecraft version* picks another ([mod.md](mod.md)) |
 | Server default | `schemgen2 serve --target 1.20.4`, or `SCHEMGEN_DATA_VERSION` |
 
 The web UI's folder suggestions read the game version from each launcher
