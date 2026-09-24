@@ -43,6 +43,15 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
+  versions:
+    name: Versions agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # backend/Cargo.toml, Cargo.lock, the web UI's package files and the
+      # server version the mod pins (tools/check_versions.py).
+      - run: python3 tools/check_versions.py
+
   msrv:
     name: Rust 1.88 (minimum supported)
     runs-on: ubuntu-latest

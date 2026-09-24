@@ -8,16 +8,25 @@ every section and label — and is what the in-game mod's screen follows.
 
 ## Run
 
-**Production — one server, one port:**
+**From a release:** download `schemgen2` for your platform from the
+[releases](https://github.com/JoyCx/schemgen/releases) and run it —
+double-click it, or `schemgen2 serve --open` — and the browser opens on
+http://localhost:3001. The web UI is inside the binary; there is nothing else
+to install.
+
+**From source — one server, one port:**
 
 ```bash
-cd frontend && npm install && npm run build
-cd ../backend && cargo run --release -- serve
-# http://localhost:3001
+cd frontend && npm ci && npm run build
+cd ../backend && cargo run --release -- serve --open
 ```
 
-`serve` mounts `frontend/dist` at `/` when it exists, so the UI and the API are
-the same origin and nothing needs a proxy.
+Building the server after the UI builds `frontend/dist` into it (the build
+script, `backend/crates/server/build.rs`, embeds whatever is there, and
+rebuilds when it changes). A server built before the UI serves
+`frontend/dist` from disk instead when it finds it, and `--ui-dir` serves any
+folder. Either way the UI and the API are the same origin and nothing needs a
+proxy.
 
 **Development — hot reload:**
 
@@ -25,10 +34,6 @@ the same origin and nothing needs a proxy.
 cd backend && cargo run --release -- serve      # :3001
 cd frontend && npm run dev                       # :5173, proxies /api to :3001
 ```
-
-On Windows, [`run_server.bat`](../run_server.bat) does the dev pair for you:
-builds the backend if needed, installs npm dependencies if needed, starts both
-and opens the browser.
 
 ## The workspace
 

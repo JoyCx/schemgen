@@ -17,7 +17,8 @@ USAGE:
     schemgen2 <COMMAND> [OPTIONS]
 
 COMMANDS:
-    serve                     Start the HTTP API and web UI (default with no command)
+    serve                     Start the HTTP API and web UI (the default; with no
+                              arguments at all it also opens it in the browser)
     convert <FILE>...         Convert models to schematics without a server
     palette                   Print the block palette (--target for another version)
     targets                   Print the Minecraft versions schematics can target
@@ -45,8 +46,8 @@ NETWORK:
 
 FILES:
     --work-dir <DIR>      Uploads and outputs (default: the user cache folder)
-    --ui-dir <DIR>        Built web UI to serve (default: frontend/dist if found;
-                          also SCHEMGEN_UI_DIR)
+    --ui-dir <DIR>        Serve the web UI from this folder instead of the one
+                          built into the binary (also SCHEMGEN_UI_DIR)
     --job-ttl <HOURS>     Forget finished jobs and delete their files after this
                           long (default 24; 0 keeps them until restart)
     --textures <PATH>     Block textures for the web preview: a Minecraft client
@@ -62,6 +63,7 @@ CONVERSION:
     --palette <FILE>      Color table to use instead of the built-in one
 
 PROCESS:
+    --open                Open the web UI in the default browser once listening
     --exit-with-stdin     Stop when standard input closes (for launchers)
     --pid-file <PATH>     Write the process id to PATH while running
 
@@ -183,7 +185,14 @@ const SHORT_OPTS: &[(char, &str, bool)] = &[
 fn is_known_flag(name: &str) -> bool {
     matches!(
         name,
-        "no-dither" | "no-color" | "quiet" | "json" | "help" | "version" | "exit-with-stdin"
+        "no-dither"
+            | "no-color"
+            | "quiet"
+            | "json"
+            | "help"
+            | "version"
+            | "exit-with-stdin"
+            | "open"
     )
 }
 
@@ -196,6 +205,13 @@ pub struct ParsedArgs {
 }
 
 impl ParsedArgs {
+    /// No command, operand, option or flag at all.
+    pub fn is_empty(&self) -> bool {
+        self.command.is_empty()
+            && self.positional.is_empty()
+            && self.opts.is_empty()
+            && self.flags.is_empty()
+    }
     pub fn has(&self, flag: &str) -> bool {
         self.flags.contains(flag)
     }

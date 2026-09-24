@@ -13,7 +13,7 @@ import io.github.joycx.schemgen.common.Fixtures;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Against {@code fixtures/schema.json}: {@code GET /api/schema} of a real schemgen2 2.0.0. */
+/** Against {@code fixtures/schema.json}: {@code GET /api/schema} of a real schemgen2 2.1.0. */
 class SchemaTest {
     private final Schema schema = Fixtures.schema();
 
@@ -75,7 +75,7 @@ class SchemaTest {
 
     @Test
     void targetsFormatsPaletteAndLimits() {
-        assertEquals("2.0.0", schema.version());
+        assertEquals("2.1.0", schema.version());
         assertEquals("26.3", schema.targets().get(0).id(), "newest first");
         assertTrue(schema.targets().contains(new Target("1.21.8", 4440, 7)));
         assertTrue(schema.targets().contains(new Target("1.16.5", 2586, 6)));

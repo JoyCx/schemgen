@@ -1,0 +1,240 @@
+name: Release
+
+# Pushing a tag v<version> builds schemgen2 for each platform with the web UI
+# inside, the mod for each Minecraft version with those binaries' checksums
+# pinned, and publishes them all as the GitHub release of that tag. Pushing a
+# change to this workflow or to the server's build script runs the same
+# builds without publishing. docs/releasing.md has the whole procedure.
+on:
+  push:
+    tags: ['v*']
+    branches: ['**']
+    # Path filters apply to branch pushes only; a tag always releases.
+    paths:
+      - '.github/workflows/release.yml'
+      - 'backend/crates/server/build.rs'
+      - 'tools/smoke_release.sh'
+      - 'tools/check_versions.py'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  versions:
+    name: Versions agree
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        name: Check
+        env:
+          TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          if [ -n "$TAG" ]; then
+            python3 tools/check_versions.py --tag "$TAG" --notes release-notes.md \
+              --link-base "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$TAG/" \
+              --github-output "$GITHUB_OUTPUT"
+          else
+            python3 tools/check_versions.py --github-output "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+  ui:
+    name: Web UI
+    needs: versions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui
+          path: frontend/dist
+          if-no-files-found: error
+
+  server:
+    name: Server ${{ matrix.platform }}
+    needs: ui
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Asset names are what the mod downloads: schemgen2-<os>-<arch>[.exe].
+          - platform: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: .exe
+            # The C runtime linked in, so no Visual C++ redistributable is needed.
+            rustflags: -C target-feature=+crt-static
+          - platform: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            cross: true
+          - platform: linux-x64
+            # The oldest runner: the binary needs this glibc (2.35) or newer.
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui
+          path: frontend/dist
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build
+        working-directory: backend
+        shell: bash
+        env:
+          SCHEMGEN_EMBED_UI: ${{ github.workspace }}/frontend/dist
+          RUSTFLAGS: ${{ matrix.rustflags }}
+        run: cargo build --release --locked -p schemgen2 --target ${{ matrix.target }}
+      - name: Name the asset
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "backend/target/${{ matrix.target }}/release/schemgen2${{ matrix.exe }}" \
+             "dist/schemgen2-${{ matrix.platform }}${{ matrix.exe }}"
+      - name: Smoke test
+        # A binary built for another CPU is not run here.
+        if: ${{ !matrix.cross }}
+        shell: bash
+        run: tools/smoke_release.sh "dist/schemgen2-${{ matrix.platform }}${{ matrix.exe }}" backend/fixtures/textured.glb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  checksums:
+    name: Checksums
+    needs: server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: server-*
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum schemgen2-* > SHA256SUMS
+          cat SHA256SUMS
+          test "$(wc -l < SHA256SUMS)" -eq 4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: dist/SHA256SUMS
+          if-no-files-found: error
+
+  mod:
+    name: Mod for Minecraft ${{ matrix.minecraft }}
+    needs: checksums
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every version in schemgen-mod/settings.gradle.kts.
+        minecraft: ['1.21.1', '1.21.4', '1.21.8', '1.21.11']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: checksums
+          path: checksums
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build
+        working-directory: schemgen-mod
+        run: >-
+          ./gradlew --stacktrace
+          -PserverChecksums="${{ github.workspace }}/checksums/SHA256SUMS"
+          ":fabric:${{ matrix.minecraft }}:build"
+      # The jar must pin a checksum for every platform built above, or the
+      # mod would refuse to download that platform's server.
+      - name: Check the pinned server
+        shell: bash
+        run: |
+          jar=$(ls schemgen-mod/fabric/versions/${{ matrix.minecraft }}/build/libs/schemgen-*.jar | grep -v -- '-sources\.jar$')
+          unzip -p "$jar" schemgen-server.properties | tee pinned.properties
+          for platform in windows-x64 macos-arm64 macos-x64 linux-x64; do
+            grep -Eq "^sha256\.$platform=[0-9a-f]{64}$" pinned.properties
+          done
+          mkdir -p jars && cp "$jar" jars/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mod-${{ matrix.minecraft }}
+          path: jars/*.jar
+          if-no-files-found: error
+
+  publish:
+    name: Publish ${{ github.ref_name }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [versions, server, checksums, mod]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: server-*
+          path: release
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: checksums
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mod-*
+          path: release
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: .
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.versions.outputs.version }}
+        run: |
+          ls -l release
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" release/* --verify-tag $prerelease \
+            --title "SchemGen2 $VERSION" --notes-file release-notes.md

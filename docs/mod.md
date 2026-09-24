@@ -27,9 +27,10 @@ contains none of the pipeline: the settings form is rendered from
 | 1.21.11 | `schemgen-<version>+mc1.21.11.jar` |
 
 1. Install Fabric Loader (0.16 or later) and Fabric API for your version.
-2. Drop the jar for your version into `mods/`. Until tagged releases exist
-   (roadmap Phase 6), the jars are the `schemgen-fabric-<version>` artifacts of
-   the **Mod** workflow's runs.
+2. Drop the jar for your version into `mods/`. Each
+   [GitHub release](https://github.com/JoyCx/schemgen/releases) has one per
+   Minecraft version; development builds are the `schemgen-fabric-<version>`
+   artifacts of the **Mod** workflow's runs.
 3. Optional: **Litematica** and **MaLiLib**. Without them the mod still
    converts and saves into `schematics/`; with them it previews through a
    real placement and can load results for you.
@@ -88,11 +89,14 @@ dies (`--exit-with-stdin`). Where the program comes from, in order:
    and run only if it matches the pinned checksum.
 4. Otherwise the screen says why not, and suggests your own server.
 
-> **Today:** no schemgen2 release exists yet and development builds pin no
-> checksums, so steps 2 and 3 cannot happen — set *schemgen2 program* to a
-> binary you built (`cargo build --release -p schemgen2` in `backend/`), or run
-> your own server. The binary is all it needs: it voxelizes in Rust, with no
-> Python and no files beside it.
+> **Which jars can fetch the server.** The jars attached to a GitHub release
+> pin the checksums of that release's server binaries — the release workflow
+> builds both ([releasing.md](releasing.md)) — so step 3 works with them. A jar
+> you build yourself pins none unless you pass them
+> ([Bundling the server](#bundling-the-server)); with it, set *schemgen2
+> program* to a binary you built (`cargo build --release -p schemgen2` in
+> `backend/`), or run your own server. Either way the binary is all the server
+> needs: no Python, no files beside it.
 
 **My own.** Start a server yourself — on this computer or another one on your
 network — and enter its address, port and token:
@@ -105,7 +109,7 @@ schemgen2 serve --host 192.168.1.20 --token <secret>   # reachable at that addre
 A server answers only to the names it was started for: `localhost`,
 `127.0.0.1`, the `--host` address, and names given with `--allow-host` (a
 guard against DNS rebinding). Enter one of those as the address. See
-[cli.md](cli.md) for the options; the mod needs API v2 (schemgen2 2.0 or
+[cli.md](cli.md) for the options; the mod needs API v2 (schemgen2 2.1 or
 later).
 
 ### Files
@@ -145,7 +149,7 @@ the game directory; a file that cannot be parsed is renamed
 
 - *pins no server release*, *no checksum is pinned*, *not built for …*: there
   is no program the mod may run for you. Set *schemgen2 program* or use your
-  own server (see [Today](#the-server-built-in-or-your-own)).
+  own server (see [Which jars can fetch the server](#the-server-built-in-or-your-own)).
 - *it exited with code …* or *it printed no address within 20 s*: the program
   started and failed. The message ends with its last lines of output; all of
   them are in `logs/latest.log` under `[schemgen2]`.
@@ -339,14 +343,17 @@ mod launches (the `[workspace.package] version` of `backend/Cargo.toml`). The
 The jar's `schemgen-server.properties`:
 
 ```properties
-version=2.0.0
-url.linux-x64=https://github.com/JoyCx/schemgen/releases/download/v2.0.0/schemgen2-linux-x64
+version=2.1.0
+url.linux-x64=https://github.com/JoyCx/schemgen/releases/download/v2.1.0/schemgen2-linux-x64
 sha256.linux-x64=<64 hex digits, or empty>
 # … the same two keys for windows-x64, windows-arm64, macos-x64, macos-arm64, linux-arm64
 ```
 
 So a release publishes assets with exactly those names on the `v<version>`
-tag, and builds the jars with that release's checksums. The platform comes
+tag, and builds the jars with that release's checksums — which is what
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) does, for
+`windows-x64`, `macos-arm64`, `macos-x64` and `linux-x64`. On the other two
+platforms the mod says no server is available for them and suggests your own. The platform comes
 from `os.name` (`Windows…`, `Mac…`, `…Linux…`) and `os.arch` (`amd64`/`x86_64`
 → `x64`, `aarch64` → `arm64`). A binary is only ever run after its SHA-256 was
 checked against the jar; a mismatch deletes it.

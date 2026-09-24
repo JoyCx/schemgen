@@ -1,7 +1,9 @@
 # CLI
 
 `schemgen2` is one binary. No server, no browser, no Node — `convert` runs the
-whole pipeline in-process and writes a `.litematic`.
+whole pipeline in-process and writes a `.litematic`. Download it for your
+platform from the [releases](https://github.com/JoyCx/schemgen/releases), or
+build it:
 
 ```bash
 cd backend
@@ -19,8 +21,9 @@ cargo build --release
 | `schemgen2 build-table <DIR> [OUT]` | Rebuild the color table from a texture pack |
 | `schemgen2 help [COMMAND]`, `schemgen2 version` | Usage and version |
 
-With no command at all it serves, so old shortcuts that ran the bare binary
-still start the server.
+With no command it serves, so old shortcuts that ran the bare binary still
+start the server. With no arguments at all — double-clicking it, say — it also
+opens the web UI in the browser.
 
 ## convert
 
@@ -154,8 +157,12 @@ and the run's `ok` is `false`. `grid` is the schematic's size, x × y × z.
 
 ```bash
 schemgen2 serve                         # http://localhost:3001, API + web UI
+schemgen2 serve --open                  # … and open it in the browser
 schemgen2 serve --port 0 --token-file ~/.schemgen/token --exit-with-stdin
 ```
+
+The web UI is built into release binaries (and into any build made after
+`npm run build` in `frontend/`, see [web.md](web.md#run)).
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -165,13 +172,14 @@ schemgen2 serve --port 0 --token-file ~/.schemgen/token --exit-with-stdin
 | `--token <T>` | none (or `SCHEMGEN_TOKEN`) | Require `Authorization: Bearer <T>` on every `/api` call but `/api/health` |
 | `--token-file <PATH>` | | Read the token from PATH, or write a new random one there if it is missing |
 | `--work-dir <DIR>` | user cache folder | Where uploads and outputs are kept |
-| `--ui-dir <DIR>` | `frontend/dist` if found (or `SCHEMGEN_UI_DIR`) | Built web UI to serve at `/` |
+| `--ui-dir <DIR>` | the UI built into the binary; without one, `frontend/dist` if found | Serve the web UI from this folder instead. Also `SCHEMGEN_UI_DIR`. |
 | `--textures <PATH>` | the newest client jar a launcher keeps | Block textures for the web preview: a Minecraft client jar, a resource pack or a folder of PNGs. Also `SCHEMGEN_TEXTURES`. |
 | `--job-ttl <HOURS>` | 24 | Forget finished jobs and delete their files after this long; 0 never |
 | `--target <VERSION>` | `1.21.8` | Default target for requests that do not name one |
 | `--max-jobs <N>` | CPU count | Conversions running at once |
 | `--exit-with-stdin` | | Stop when standard input closes |
 | `--pid-file <PATH>` | | Write the process id there while running |
+| `--open` | off (on for a bare `schemgen2`) | Open the web UI in the default browser once listening |
 | `--voxelizer`, `--python`, `--palette` | | As for `convert` |
 
 Once it accepts connections, `serve` prints exactly one line to stdout —

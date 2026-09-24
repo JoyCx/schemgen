@@ -2,9 +2,11 @@
 
 `schemgen2 serve` starts it (port 3001 by default). The web app and the
 Minecraft mod are both clients of this API and have no other way in.
+Everything under `/api` is the API; every other path is the web UI, which the
+same server serves ([web.md](web.md#run)).
 
 ```bash
-cd backend && cargo run --release -- serve
+schemgen2 serve               # or, from source: cd backend && cargo run --release -- serve
 curl http://localhost:3001/api/health
 ```
 

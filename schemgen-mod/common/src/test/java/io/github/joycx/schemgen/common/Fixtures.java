@@ -6,7 +6,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 
-/** Responses captured from a real schemgen2 2.0.0 ({@code src/test/resources/fixtures}). */
+/** Responses captured from a real schemgen2 2.1.0 ({@code src/test/resources/fixtures}). */
 public final class Fixtures {
     private Fixtures() {}
 

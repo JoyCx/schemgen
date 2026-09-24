@@ -303,6 +303,27 @@ pub fn reveal_dir(dir: &Path) -> Result<(), String> {
         .map_err(|e| format!("Could not open the file manager: {e}"))
 }
 
+/// Open `url` in the default browser.
+pub fn open_in_browser(url: &str) -> Result<(), String> {
+    let mut command = if cfg!(windows) {
+        // Hands the URL to its protocol handler with no shell in between.
+        let mut c = Command::new("rundll32.exe");
+        c.arg("url.dll,FileProtocolHandler");
+        c
+    } else if cfg!(target_os = "macos") {
+        Command::new("open")
+    } else {
+        Command::new("xdg-open")
+    };
+    let mut child = command
+        .arg(url)
+        .spawn()
+        .map_err(|e| format!("Could not open a browser: {e}"))?;
+    // Reaped in the background: the opener exits as soon as it has handed over.
+    std::thread::spawn(move || child.wait());
+    Ok(())
+}
+
 /// A launcher instance a suggested folder belongs to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Instance {

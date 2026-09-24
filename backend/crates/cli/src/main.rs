@@ -8,7 +8,8 @@
 //! * `schemgen2 palette` / `targets` / `schema` / `build-table` — inspection
 //!   and rebuilding the color table
 //!
-//! With no command it serves, so existing shortcuts keep working.
+//! With no command it serves, so existing shortcuts keep working; with no
+//! arguments at all it also opens the web UI in the browser.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -267,10 +268,13 @@ fn serve(args: &args::ParsedArgs) -> ExitCode {
         if let Some(dir) = args.get("work-dir") {
             config.work_dir = PathBuf::from(dir);
         }
-        config.ui_dir = match args.get("ui-dir") {
-            Some(dir) => Some(PathBuf::from(dir)),
-            None => schemgen_server::find_ui_dir(),
+        config.ui = match args.get("ui-dir") {
+            Some(dir) => schemgen_server::Ui::Dir(PathBuf::from(dir)),
+            None => schemgen_server::Ui::find(),
         };
+        // Started with nothing at all — as a double-click does — it opens
+        // the web UI too.
+        config.open_browser = args.has("open") || args.is_empty();
         config.textures = args
             .get("textures")
             .map(str::to_string)

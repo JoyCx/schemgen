@@ -1,56 +1,83 @@
 # SchemGen2 — 3D model → Minecraft schematic
 
-Turn a `.glb` / `.gltf` model into a Minecraft `.litematic` schematic, with
-perceptual (CIEDE2000) block matching, surface-only voxelization and optional
-removal of lighting that was baked into the model's textures.
+Turn a `.glb` / `.gltf` model into a Minecraft schematic — Litematica
+`.litematic`, WorldEdit `.schem` or structure-block `.nbt`, for any version
+from 1.16.5 to 26.3 — with perceptual (CIEDE2000) block matching,
+surface-only voxelization and optional removal of lighting that was baked into
+the model's textures.
 
-Two ways to run it, one pipeline:
+Three ways to use it, one pipeline:
 
-| | Surface | Start here | Needs |
-|---|---|---|---|
-| 1 | **CLI** — `schemgen2 convert model.glb`, scriptable, no server, no browser | [docs/cli.md](docs/cli.md) | Rust |
-| 2 | **Web app** — drag and drop, 3D preview, live settings | [docs/web.md](docs/web.md) | Rust, Node |
+| | Surface | Start here |
+|---|---|---|
+| 1 | **Web app** — drag and drop, the model and its blocks side by side in 3D, live settings | [docs/web.md](docs/web.md) |
+| 2 | **CLI** — `schemgen2 convert model.glb`, scriptable, no server, no browser | [docs/cli.md](docs/cli.md) |
+| 3 | **Minecraft mod** — pick a model in game, see a ghost preview, place it with Litematica | [docs/mod.md](docs/mod.md) |
 
-Plus the [**HTTP API**](docs/api.md) the web app is a client of, the
-[**roadmap**](docs/roadmap.md) for the UI redesign, the in-game mod and
-multi-version support, and
-[**the pipeline**](docs/pipeline.md) both share.
+Plus the [**HTTP API**](docs/api.md) the web app and the mod are clients of,
+[**the pipeline**](docs/pipeline.md) all three share, the
+[**design**](docs/design.md) both UIs follow, the
+[**decisions**](docs/adr/README.md) behind it, the
+[**changelog**](CHANGELOG.md) and the [**roadmap**](docs/roadmap.md).
 
 ```
                         ┌──────────────────────────────┐
   Web app ─── HTTP ───▶│   schemgen2 (Rust binary)    │
-                        │   voxelize → sample → dither │──▶ .litematic
-  CLI     ── direct ──▶│   → CIEDE2000 → NBT          │
+  Mod     ─── HTTP ───▶│   voxelize → sample → dither │──▶ .litematic
+                        │   → CIEDE2000 → NBT          │    .schem  .nbt
+  CLI     ── direct ──▶│   (web UI built in)          │
                         └──────────────────────────────┘
 ```
 
-Both produce the same blocks for the same settings: the CLI runs the pipeline
-in-process, the web app posts to the server, and they meet in the same
-`pipeline::run`.
+All three produce the same blocks for the same settings: the CLI runs the
+pipeline in-process, the web app and the mod post to the server, and they
+meet in the same `pipeline::run`.
 
-## Prerequisites
+## Download
+
+Each [release](https://github.com/JoyCx/schemgen/releases) has one
+self-contained binary per platform — the converter, the server and the web
+UI in one file, nothing to install — plus `SHA256SUMS` and the mod.
+
+| Platform | File | Run it |
+|---|---|---|
+| Windows 10/11, x64 | `schemgen2-windows-x64.exe` | Double-click it. The first time, SmartScreen may ask: *More info → Run anyway* (the binary is not signed). |
+| macOS, Apple silicon | `schemgen2-macos-arm64` | `chmod +x schemgen2-macos-arm64 && xattr -d com.apple.quarantine schemgen2-macos-arm64`, then `./schemgen2-macos-arm64` (not notarized). |
+| macOS, Intel | `schemgen2-macos-x64` | As above. |
+| Linux, x64 (glibc 2.35+) | `schemgen2-linux-x64` | `chmod +x schemgen2-linux-x64 && ./schemgen2-linux-x64` |
+
+Started with no arguments it serves the web app and opens it in your browser
+(http://localhost:3001). The same file is the CLI: `schemgen2-linux-x64
+convert model.glb`. Rename it `schemgen2` if you like — the docs do.
+
+For the mod, take the jar for your Minecraft version from the same release;
+it fetches the server by itself ([docs/mod.md](docs/mod.md)).
+
+## Building from source
 
 | | Version | Needed for |
 |---|---|---|
 | **Rust** | 1.88+ | the converter itself — CLI and server |
-| **Node** | 22+ | building the web UI only — the CLI does not need it |
+| **Node** | 22+ | the web UI — the CLI does not need it |
+| **Java** | 21 | the mod only |
 
-The binary is self-contained: loading the model, voxelizing and color sampling
-are all Rust. (SchemGen2 2.0 ran those in Python; builds made with
-`--features python-voxelizer` can still do so with `--voxelizer python`, for
-one release — see [docs/pipeline.md](docs/pipeline.md#parity-with-the-python-helper).)
+```bash
+cd frontend && npm ci && npm run build   # first, so the server build embeds it
+cd ../backend && cargo build --release
+./target/release/schemgen2               # serves the web app and opens it
+```
+
+Loading the model, voxelizing and color sampling are all Rust. (SchemGen2 2.0
+ran those in Python; builds made with `--features python-voxelizer` can still
+do so with `--voxelizer python`, for one release — see
+[docs/pipeline.md](docs/pipeline.md#parity-with-the-python-helper).)
 
 ## Quick start
 
 ### CLI — convert one model, no server
 
 ```bash
-# 1. Build
-cd backend
-cargo build --release
-
-# 2. Convert
-./target/release/schemgen2 convert ../model.glb --max-size 128 -d ~/schematics
+schemgen2 convert model.glb --max-size 128 -d ~/schematics
 ```
 
 `-d` is the folder to write into; `~` and `%APPDATA%` expand and the folder is
@@ -71,23 +98,16 @@ command composes. Exit code is 0 when every file converted, 1 when any failed,
 ### Web app — drag, drop, preview, convert
 
 ```bash
-cd frontend && npm install && npm run build
-cd ../backend && cargo run --release -- serve
-# open http://localhost:3001
+schemgen2                     # or: schemgen2 serve --open
 ```
 
-`serve` mounts `frontend/dist` at `/` when it exists, so the UI and the API are
-one origin on one port and nothing needs a proxy. For hot reload during
-development, run the two separately:
+The UI is inside the binary and on the same port as the API, so nothing needs
+a proxy. For hot reload during development, run the two separately:
 
 ```bash
 cd backend && cargo run --release -- serve   # :3001
 cd frontend && npm run dev                   # :5173, proxies /api to :3001
 ```
-
-On Windows, [`run_server.bat`](run_server.bat) does that development pair for
-you: it builds the backend if needed, installs npm dependencies if needed,
-starts both and opens the browser.
 
 The web app adds what a CLI cannot: the model and its blocks side by side in
 one 3D view (with a draggable split between them), a live low-resolution preview
@@ -104,13 +124,21 @@ section by section.
 > call. Exposing it with `--host` is possible but not what it is for — see
 > [docs/api.md](docs/api.md#authentication-and-exposure).
 
+### Minecraft mod — in game
+
+Install Fabric Loader and Fabric API, drop the jar for your Minecraft version
+(1.21.1, 1.21.4, 1.21.8 or 1.21.11) into `mods/`, and press **K** in game.
+Litematica is optional: with it, the preview is a real placement and results
+are placed for you. See [docs/mod.md](docs/mod.md).
+
 ## Loading the result
 
 The output is a Litematica `.litematic` made for Minecraft 1.21.8 by default,
 so it loads in 1.21.8 and every version after it. Put it in your instance's
 `schematics/` folder — or point `-d` there directly — and load it with the
 [Litematica](https://github.com/maruohon/litematica) mod. For another version,
-pass `--target` (`schemgen2 targets` lists them, from 1.16.5 to 26.3); see
+pass `--target` (`schemgen2 targets` lists them, from 1.16.5 to 26.3); for
+WorldEdit or a structure block, `--format schem` or `--format nbt`. See
 [docs/versions.md](docs/versions.md).
 
 ## How it works
@@ -129,7 +157,7 @@ in [docs/pipeline.md](docs/pipeline.md):
   into a single block.
 - **The palette is anti-grief.** Only curated full solid blocks are eligible —
   no falling blocks, no gravity, no blocks that need support. `schemgen2
-  palette` prints the 182 it may choose from.
+  palette` prints the 181 it may choose from (fewer for older versions).
 
 ## Repository layout
 
@@ -151,14 +179,18 @@ schemgen2/
 │   │   │   ├── formats/     NBT writer/reader, .litematic
 │   │   │   ├── thumbnail.rs Isometric preview image
 │   │   │   └── …            dithering, color tables, anti-grief list
-│   │   ├── server/          schemgen-server: API v2 + v1, jobs, events, auth
+│   │   ├── server/          schemgen-server: API v2 + v1, jobs, events, auth,
+│   │   │                    and the web UI (build.rs embeds frontend/dist)
 │   │   └── cli/             schemgen2: the binary — convert, serve, …
 │   ├── scripts/             2.0's Python voxelizer, for --voxelizer python and
 │   │                        the parity harness (crates/core/examples/parity.rs)
 │   ├── fixtures/            Small test models (tools/make_fixtures.py)
 │   └── data/                color_table_safe.json — the curated palette
 ├── frontend/                The web app: React + TypeScript, three.js, Vite
-└── docs/                    cli · api · web · design · pipeline · versions · roadmap
+├── schemgen-mod/            The Fabric mod: common (plain Java) + fabric (Stonecutter)
+├── tools/                   Fixtures, output checks, version and release checks
+└── docs/                    cli · api · web · design · mod · pipeline · versions ·
+                             releasing · adr/ · roadmap
 ```
 
 ## Rebuilding the color table
@@ -183,11 +215,14 @@ light and only the curated anti-grief blocks are kept.
 cd backend && cargo test                              # core, server and CLI
 cd frontend && npm run lint && npm run typecheck && npm test && npm run build
 cd frontend && npm run test:e2e                       # the built UI against the real server
+cd schemgen-mod && SCHEMGEN_BINARY=../backend/target/release/schemgen2 ./gradlew :common:test
 ```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of it on
-Linux and Windows, plus `cargo fmt --check`, `cargo clippy -D warnings` and
-`prettier --check`.
+Linux and Windows, plus `cargo fmt --check`, `cargo clippy -D warnings`,
+`prettier --check` and a check that every version number agrees;
+[`mod.yml`](.github/workflows/mod.yml) tests the mod against a fresh server
+and builds it for every Minecraft version.
 
 The Rust tests cover the glTF loader, the voxelizer and the color sampler, the
 CIEDE2000 implementation against reference values, the KD-tree's pruning and
@@ -199,6 +234,11 @@ parity harness ([docs/pipeline.md](docs/pipeline.md#parity-with-the-python-helpe
 The web preview's GLSL mirror of the lighting model has no assertion to make, so it is
 checked by compiling it against a real WebGL context — run the dev server and
 open `/shader-check.html`.
+
+## Releasing
+
+Push a tag `v<version>`; [docs/releasing.md](docs/releasing.md) has the
+steps and what the release workflow builds, checks and publishes.
 
 ## Notes
 

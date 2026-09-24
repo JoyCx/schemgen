@@ -27,11 +27,13 @@ mod sse;
 mod state;
 mod sweep;
 mod textures;
+mod ui;
 mod v1;
 mod v2;
 
 pub use guard::host_name;
 pub use state::AppState;
+pub use ui::Ui;
 
 /// Default upload limit per model file.
 pub const DEFAULT_MAX_UPLOAD: u64 = 1024 * 1024 * 1024;
@@ -47,8 +49,8 @@ pub struct ServerConfig {
     pub defaults: Settings,
     /// Uploads and outputs live in `work_dir/uploads` and `work_dir/outputs`.
     pub work_dir: PathBuf,
-    /// Built web UI to serve at `/`.
-    pub ui_dir: Option<PathBuf>,
+    /// The web UI served at `/`.
+    pub ui: Ui,
     pub token: Option<String>,
     /// Host names accepted besides the loopback ones.
     pub allowed_hosts: Vec<String>,
@@ -65,6 +67,8 @@ pub struct ServerConfig {
     /// Block textures for the preview: a client jar, resource pack or folder.
     /// `None` looks for a launcher's client jar.
     pub textures: Option<PathBuf>,
+    /// Open the web UI in the default browser once the server listens.
+    pub open_browser: bool,
 }
 
 impl ServerConfig {
@@ -75,7 +79,7 @@ impl ServerConfig {
             palettes,
             defaults: Settings::default(),
             work_dir: default_work_dir(),
-            ui_dir: None,
+            ui: Ui::None,
             token: None,
             allowed_hosts: Vec::new(),
             job_ttl: Some(Duration::from_secs(24 * 3600)),
@@ -84,6 +88,7 @@ impl ServerConfig {
             exit_with_stdin: false,
             pid_file: None,
             textures: None,
+            open_browser: false,
         }
     }
 }
@@ -105,28 +110,6 @@ pub fn default_work_dir() -> PathBuf {
         env("XDG_CACHE_HOME").or_else(|| env("HOME").map(|h| h.join(".cache")))
     };
     base.unwrap_or_else(std::env::temp_dir).join("schemgen2")
-}
-
-/// The built web UI: `SCHEMGEN_UI_DIR`, else `frontend/dist` found from the
-/// working directory, the binary's location or the source tree.
-pub fn find_ui_dir() -> Option<PathBuf> {
-    if let Some(dir) = std::env::var_os("SCHEMGEN_UI_DIR").map(PathBuf::from) {
-        return Some(dir);
-    }
-    let exe = std::env::current_exe().ok();
-    let exe_dir = exe.as_deref().and_then(Path::parent);
-    let cwd = std::env::current_dir().ok();
-    [
-        cwd.as_ref().map(|d| d.join("frontend/dist")),
-        cwd.as_ref().map(|d| d.join("../frontend/dist")),
-        exe_dir.map(|d| d.join("ui")),
-        // backend/target/release/schemgen2 → frontend/dist
-        exe_dir.map(|d| d.join("../../../frontend/dist")),
-        Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../frontend/dist")),
-    ]
-    .into_iter()
-    .flatten()
-    .find(|d| d.join("index.html").is_file())
 }
 
 /// The shared state for `config`, with its work folders created.
@@ -167,12 +150,13 @@ pub fn configure_api(cfg: &mut web::ServiceConfig) {
         })));
 }
 
-/// Page served at `/` when no built UI was found.
+/// Page served at `/` when there is no UI to serve.
 const NO_UI_PAGE: &str = "<!doctype html><meta charset=utf-8><title>SchemGen2</title>\
 <body style=\"font:15px system-ui;max-width:40em;margin:3em auto\">\
-<h1>SchemGen2 is running</h1><p>The API is available under <code>/api</code>, but no web UI \
-build was found. Build it with <code>cd frontend &amp;&amp; npm run build</code> and restart, or \
-point <code>SCHEMGEN_UI_DIR</code> at a build.</p>";
+<h1>SchemGen2 is running</h1><p>The API is available under <code>/api</code>, but this build \
+has no web UI inside and none was found beside it. Build one with <code>cd frontend &amp;&amp; \
+npm run build</code> and restart (or rebuild the server, which then carries it), or point \
+<code>--ui-dir</code> at a build.</p>";
 
 /// Run the server until it is stopped (Ctrl+C, or standard input closing
 /// with `exit_with_stdin`).
@@ -180,10 +164,11 @@ pub async fn run(mut config: ServerConfig) -> std::io::Result<()> {
     let state = build_state(&mut config)?;
     sweep::spawn(Arc::clone(&state));
 
-    let ui_dir = config.ui_dir.clone();
-    match &ui_dir {
-        Some(dir) => log::info!("Serving the web UI from {}", dir.display()),
-        None => log::warn!("No web UI build found — run `cd frontend && npm run build`"),
+    let ui = config.ui.clone();
+    match &ui {
+        Ui::Embedded => log::info!("Serving the web UI built into this binary"),
+        Ui::Dir(dir) => log::info!("Serving the web UI from {}", dir.display()),
+        Ui::None => log::warn!("No web UI to serve — run `cd frontend && npm run build`"),
     }
     let loopback = guard::LOOPBACK_HOSTS.contains(&config.host.as_str());
     if !loopback && config.token.is_none() {
@@ -201,13 +186,14 @@ pub async fn run(mut config: ServerConfig) -> std::io::Result<()> {
             .app_data(web::JsonConfig::default().limit(64 * 1024))
             .wrap(middleware::from_fn(guard::guard))
             .configure(configure_api);
-        app = match &ui_dir {
-            Some(dir) => app.service(
+        app = match &ui {
+            Ui::Embedded => app.default_service(ui::service(ui::embedded_files())),
+            Ui::Dir(dir) => app.service(
                 actix_files::Files::new("/", dir)
                     .index_file("index.html")
                     .prefer_utf8(true),
             ),
-            None => app.route(
+            Ui::None => app.route(
                 "/",
                 web::get().to(|| async {
                     HttpResponse::Ok()
@@ -234,13 +220,22 @@ pub async fn run(mut config: ServerConfig) -> std::io::Result<()> {
         };
         let url = format!("http://{shown_host}:{}", addr.port());
         log::info!("SchemGen2 {} listening on {url}", schemgen_core::VERSION);
-        if let Some(token) = &config.token {
-            log::info!("Open {url}/?token={token} to use the web UI");
+        let page = match &config.token {
+            Some(token) => format!("{url}/?token={token}"),
+            None => format!("{url}/"),
+        };
+        if config.token.is_some() {
+            log::info!("Open {page} to use the web UI");
         }
         // The one line a launching process waits for, e.g. with --port 0.
         let mut out = std::io::stdout();
         let _ = writeln!(out, "listening {url}");
         let _ = out.flush();
+        if config.open_browser {
+            if let Err(e) = savedir::open_in_browser(&page) {
+                log::warn!("{e} — open {page} yourself");
+            }
+        }
     }
     if let Some(pid_file) = &config.pid_file {
         std::fs::write(pid_file, std::process::id().to_string())?;

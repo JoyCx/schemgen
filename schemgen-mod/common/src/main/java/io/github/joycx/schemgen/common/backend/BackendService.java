@@ -111,7 +111,7 @@ public final class BackendService implements AutoCloseable {
         if (health.api() < 2) {
             throw new BackendException("The server at " + where + " is schemgen2 "
                     + Objects.requireNonNullElse(health.version(), "(unknown version)")
-                    + ", which is too old for the mod: it needs API v2 (schemgen2 2.0 or later)");
+                    + ", which is too old for the mod: it needs API v2 (schemgen2 2.1 or later)");
         }
     }
 }

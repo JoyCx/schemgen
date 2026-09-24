@@ -11,6 +11,27 @@ Where the project stands, and a phased plan for the four things on the table:
 Everything here was written against the code as of the `SchemGen2` initial
 commit (`257106d`). File references point at that tree.
 
+## Status
+
+Every phase below has landed, for 2.1.0; [CHANGELOG.md](../CHANGELOG.md) says
+what that release brings, and the two big decisions are recorded in
+[adr/](adr/README.md).
+Where the result differs from the plan:
+
+| Phase | Where it went | Differences from the plan |
+|---|---|---|
+| 0 — Hygiene and CI | [ci.yml](../.github/workflows/ci.yml) | — |
+| 1 — Core and API v2 | [api.md](api.md), [ADR 2](adr/0002-api-v2.md) | Cancellation is `Progress::is_cancelled` rather than a `CancellationToken`; instead of a shared `DashMap` cache, matching de-duplicates each run's quantized colors and matches each once. |
+| 2 — Versions | [versions.md](versions.md) | Targets 1.16.5 to 26.3, a palette per target, and besides `.litematic` also Sponge `.schem` v2/v3 and structure `.nbt`. |
+| 3 — Web UI | [web.md](web.md), [design.md](design.md) | — |
+| 4 — Rust voxelizer | [pipeline.md](pipeline.md#parity-with-the-python-helper), [ADR 1](adr/0001-python-removal.md) | Materials follow the glTF specification rather than trimesh's reading of them (differences listed in pipeline.md). The Python helper remains behind a Cargo feature for one release. |
+| 5 — Fabric mod | [mod.md](mod.md) | Minecraft 1.21.1, 1.21.4, 1.21.8 and 1.21.11; **not 26.x**, which ships unobfuscated and needs the Fabric layer moved to Mojang's names, Gradle 9, Loom 1.14 and Stonecutter 0.8 first ([mod.md](mod.md#minecraft-versions)). Compiled in CI; not yet played with. |
+| 6 — Packaging | [releasing.md](releasing.md), [release.yml](../.github/workflows/release.yml) | A release workflow rather than `cargo dist`; the web UI is embedded by a build script rather than `include_dir`. Modrinth and CurseForge uploads, code signing and ARM Linux/Windows builds are not automated. |
+
+**Next:** remove API v1, the `python-voxelizer` feature, `backend/scripts/`
+and the parity job (all kept one release for compatibility); the mod on
+Minecraft 26.x; the mod's pages on Modrinth and CurseForge.
+
 ---
 
 ## 1. The project today

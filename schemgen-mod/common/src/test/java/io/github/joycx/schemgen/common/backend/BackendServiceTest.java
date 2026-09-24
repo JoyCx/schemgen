@@ -45,7 +45,7 @@ class BackendServiceTest {
             try (BackendService service = service()) {
                 BackendException e = assertThrows(BackendException.class, service::connect);
                 assertEquals("The server at " + server.uri() + " is schemgen2 2.0.0-beta, which is too old for the mod: "
-                        + "it needs API v2 (schemgen2 2.0 or later)", e.getMessage());
+                        + "it needs API v2 (schemgen2 2.1 or later)", e.getMessage());
             }
         }
     }
