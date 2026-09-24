@@ -1,0 +1,7 @@
+# SchemGen2 2.0's Python voxelizer, kept for one release behind the
+# `python-voxelizer` Cargo feature and for the parity harness
+# (docs/pipeline.md). The default build does not need any of this.
+trimesh>=4
+numpy
+scipy
+Pillow

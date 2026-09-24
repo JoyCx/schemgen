@@ -80,11 +80,7 @@ const MILESTONES: &[(&str, f32)] = &[
     ("Done sampling", 0.80),
 ];
 
-pub(super) fn voxelize(
-    input: &Path,
-    settings: &Settings,
-    progress: &mut dyn Progress,
-) -> Result<Voxels> {
+pub fn voxelize(input: &Path, settings: &Settings, progress: &mut dyn Progress) -> Result<Voxels> {
     let python = python_interpreter();
     let script = voxelize_script();
     log::info!(

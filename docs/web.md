@@ -25,8 +25,8 @@ cd frontend && npm run dev                       # :5173, proxies /api to :3001
 ```
 
 On Windows, [`run_server.bat`](../run_server.bat) does the dev pair for you:
-checks Python/trimesh, builds the backend if needed, installs npm dependencies
-if needed, starts both and opens the browser.
+builds the backend if needed, installs npm dependencies if needed, starts both
+and opens the browser.
 
 ## What the UI adds over the CLI
 
@@ -39,9 +39,9 @@ if needed, starts both and opens the browser.
 | Batch panel | Queue many models with shared settings and a thread count |
 | Folder picker | Suggests the Litematica folders it finds on this machine |
 
-The de-light preview is a GLSL mirror of the Python sampler
+The de-light preview is a GLSL mirror of the color sampler's lighting model
 ([`frontend/src/delightshader.js`](../frontend/src/delightshader.js) against
-`backend/scripts/sample_colors.py`). The preview only predicts the conversion
+`backend/crates/core/src/sample.rs`). The preview only predicts the conversion
 while those two agree — see [docs/pipeline.md](pipeline.md#lighting-separation-de-light).
 
 ## Output folder

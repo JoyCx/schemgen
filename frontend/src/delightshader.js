@@ -1,6 +1,6 @@
 // GLSL for the de-lit albedo and rejection-mask preview modes.
 //
-// This mirrors apply_delight / highlight_weight in backend/scripts/sample_colors.py.
+// This mirrors Light::delight / Light::keep in backend/crates/core/src/sample.rs.
 // The whole point of the view is that it predicts what conversion will consume,
 // so the constants below — specular exponent, de-light floor, clipping window,
 // rejection ceiling — have to track the sampler's. If that model changes, this
@@ -48,7 +48,7 @@ vec3 linearToSrgb(vec3 c) {
 
 void main() {
   // An sRGB-tagged texture is decoded by the sampler hardware, so this is
-  // linear light already — the same space the Python sampler averages in.
+  // linear light already — the same space the color sampler averages in.
   vec3 observed = uBaseColor;
   float alpha = 1.0;
   if (uHasMap) {

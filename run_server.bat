@@ -11,29 +11,8 @@ echo.
 
 cd /d "%~dp0"
 
-:: ── Check Python (required for trimesh voxelization) ──────────
-echo [1/4] Checking Python...
-where python >nul 2>nul
-if !errorlevel! neq 0 (
-    echo [ERROR] python not found in PATH. Please install Python 3.
-    goto :fail
-)
-for /f "tokens=2 delims= " %%v in ('python --version 2^>^&1') do echo   Python %%v
-
-python -c "import trimesh; import numpy; import scipy" >nul 2>nul
-if !errorlevel! neq 0 (
-    echo [WARN ] trimesh/numpy/scipy not installed. Installing...
-    pip install trimesh numpy scipy pillow --quiet
-    if !errorlevel! neq 0 (
-        echo [ERROR] Failed to install Python dependencies.
-        goto :fail
-    )
-)
-echo   Python deps: OK
-
 :: ── Check Rust backend binary ─────────────────────────────────
-echo.
-echo [2/4] Checking Rust backend...
+echo [1/3] Checking Rust backend...
 set "EXE=backend\target\release\schemgen2.exe"
 if not exist "!EXE!" (
     echo [WARN ] Release binary not found. Building...
@@ -49,7 +28,7 @@ echo   Backend binary: OK
 
 :: ── Check Node.js / Frontend ──────────────────────────────────
 echo.
-echo [3/4] Checking frontend...
+echo [2/3] Checking frontend...
 where node >nul 2>nul
 if !errorlevel! neq 0 (
     echo [ERROR] Node.js not found. Please install Node.js.
@@ -71,7 +50,7 @@ echo   Frontend deps: OK
 
 :: ── Start servers ─────────────────────────────────────────────
 echo.
-echo [4/4] Starting servers...
+echo [3/3] Starting servers...
 
 :: Kill any existing instances
 taskkill /f /im schemgen2.exe >nul 2>nul

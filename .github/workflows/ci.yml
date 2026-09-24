@@ -34,16 +34,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
-      # The server tests run real conversions through the Python voxelizer.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install voxelizer dependencies
-        run: python -m pip install "trimesh[easy]" numpy scipy Pillow
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Clippy (with the Python voxelizer)
+        run: cargo clippy --workspace --all-targets --locked --features schemgen2/python-voxelizer,schemgen-core/python-voxelizer -- -D warnings
       - name: Test
         run: cargo test --workspace --locked
 
@@ -73,31 +69,36 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install voxelizer and reader dependencies
-        run: python -m pip install "trimesh[easy]" numpy scipy Pillow litemapy nbtlib
+      - name: Install the independent readers
+        run: python -m pip install litemapy nbtlib
       - name: Build
         working-directory: backend
         run: cargo build --release --locked
       - name: Convert and check
         run: python tools/check_outputs.py --binary backend/target/release/schemgen2
 
-  python:
-    name: Python sampler (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  parity:
+    name: Rust voxelizer against the Python helper
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install dependencies
-        run: python -m pip install "trimesh[easy]" numpy scipy Pillow
-      - name: Test
+      - name: Install the Python helper's dependencies
+        run: python -m pip install -r backend/scripts/requirements.txt
+      - name: Python sampler tests
         working-directory: backend/scripts
         run: python test_sample_colors.py
+      # Fails if the port's blocks differ from the helper's on 0.5 % or more
+      # of a fixture's voxels (docs/pipeline.md#parity-with-the-python-helper).
+      - name: Parity on the fixtures
+        working-directory: backend
+        run: cargo run --release --locked -p schemgen-core --features python-voxelizer --example parity
 
   frontend:
     name: Frontend (${{ matrix.os }})

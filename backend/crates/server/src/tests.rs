@@ -1,8 +1,4 @@
-//! The HTTP surface, exercised in-process.
-//!
-//! Tests that run a real conversion need the voxelizer; while it is the
-//! Python helper they skip, loudly, when no interpreter with trimesh is found
-//! (`SCHEMGEN_PYTHON` picks one).
+//! The HTTP surface, exercised in-process, real conversions included.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,20 +17,6 @@ fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../fixtures")
         .join(name)
-}
-
-fn voxelizer_available() -> bool {
-    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *AVAILABLE.get_or_init(|| {
-        let ok = std::process::Command::new(schemgen_core::voxelizer::python_interpreter())
-            .args(["-c", "import trimesh, scipy, PIL"])
-            .output()
-            .is_ok_and(|o| o.status.success());
-        if !ok {
-            eprintln!("SKIPPING conversion tests: no Python with trimesh (set SCHEMGEN_PYTHON)");
-        }
-        ok
-    })
 }
 
 fn config(tag: &str) -> ServerConfig {
@@ -123,6 +105,7 @@ async fn health_reports_version_and_target() {
     assert_eq!(body["target"], "1.21.8");
     assert_eq!(body["data_version"], 4440);
     assert_eq!(body["auth"], false);
+    assert_eq!(body["voxelizer"], "rust");
 }
 
 #[actix_web::test]
@@ -344,9 +327,6 @@ async fn queued_jobs_cancel_immediately() {
 
 #[actix_web::test]
 async fn v2_job_runs_to_a_valid_schematic() {
-    if !voxelizer_available() {
-        return;
-    }
     let state = build_state(&mut config("v2")).unwrap();
     let app = service!(Arc::clone(&state));
     let resp = test::call_service(
@@ -441,10 +421,32 @@ async fn v2_job_runs_to_a_valid_schematic() {
 }
 
 #[actix_web::test]
+async fn uploads_cannot_reach_files_beside_them() {
+    let state = build_state(&mut config("external")).unwrap();
+    // Something that must not end up in anyone's schematic.
+    std::fs::write(state.uploads.join("secret.bin"), [0u8; 36]).unwrap();
+    let gltf = br#"{"asset":{"version":"2.0"},
+        "buffers":[{"uri":"secret.bin","byteLength":36}],
+        "bufferViews":[{"buffer":0,"byteLength":36}],
+        "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3",
+                      "min":[0,0,0],"max":[0,0,0]}],
+        "meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}],
+        "nodes":[{"mesh":0}],"scenes":[{"nodes":[0]}],"scene":0}"#;
+    let app = service!(Arc::clone(&state));
+    let body: Value = test::call_and_read_body_json(
+        &app,
+        post_multipart("/api/jobs", &[("file", "model.gltf", gltf.to_vec())], &[]).to_request(),
+    )
+    .await;
+    let id = body["job_id"].as_str().unwrap().to_string();
+    let finished = wait_finished(&state, &id).await;
+    assert_eq!(finished.status, Status::Error);
+    let error = finished.error.unwrap_or_default();
+    assert!(error.contains("separate file (secret.bin)"), "{error}");
+}
+
+#[actix_web::test]
 async fn v1_routes_still_work() {
-    if !voxelizer_available() {
-        return;
-    }
     let state = build_state(&mut config("v1")).unwrap();
     let app = service!(Arc::clone(&state));
     let body: Value = test::call_and_read_body_json(
@@ -492,9 +494,6 @@ async fn v1_routes_still_work() {
 
 #[actix_web::test]
 async fn previews_come_packed_for_v2_and_as_objects_for_v1() {
-    if !voxelizer_available() {
-        return;
-    }
     let app = service!(build_state(&mut config("preview")).unwrap());
 
     let v2: Value = test::call_and_read_body_json(
@@ -628,9 +627,6 @@ async fn palettes_follow_the_target() {
 
 #[actix_web::test]
 async fn old_targets_never_get_newer_blocks() {
-    if !voxelizer_available() {
-        return;
-    }
     let state = build_state(&mut config("gating")).unwrap();
     let app = service!(Arc::clone(&state));
     let body: Value = test::call_and_read_body_json(

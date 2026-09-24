@@ -38,6 +38,7 @@ async fn health(app: App) -> ApiResult<HttpResponse> {
         "schematic_version": target.schematic_version,
         "os": std::env::consts::OS,
         "auth": app.token.is_some(),
+        "voxelizer": schemgen_core::voxelizer::backend().name(),
     })))
 }
 

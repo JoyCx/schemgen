@@ -101,7 +101,8 @@ for what each one does.
 | Option | Default | Meaning |
 |---|---|---|
 | `--threads <N>` | 1 | Convert N files concurrently |
-| `--python <PATH>` | `python3` (`python` on Windows) | Interpreter that has `trimesh` installed. Also `SCHEMGEN_PYTHON`. |
+| `--voxelizer <NAME>` | `rust` | `python` runs SchemGen2 2.0's Python helper instead — only in builds made with `--features python-voxelizer`, for one release. Also `SCHEMGEN_VOXELIZER`. |
+| `--python <PATH>` | `python3` (`python` on Windows) | Interpreter for `--voxelizer python`; it needs `backend/scripts/requirements.txt`. Also `SCHEMGEN_PYTHON`. Ignored, with a warning, by builds without the Python voxelizer. |
 | `--palette <FILE>` | built in | Color table to use instead of the built-in one. Also `SCHEMGEN_PALETTE`. |
 | `-q, --quiet` | | No progress lines |
 | `-j, --json` | | Machine-readable result on stdout |
@@ -170,7 +171,7 @@ schemgen2 serve --port 0 --token-file ~/.schemgen/token --exit-with-stdin
 | `--max-jobs <N>` | CPU count | Conversions running at once |
 | `--exit-with-stdin` | | Stop when standard input closes |
 | `--pid-file <PATH>` | | Write the process id there while running |
-| `--python`, `--palette` | | As for `convert` |
+| `--voxelizer`, `--python`, `--palette` | | As for `convert` |
 
 Once it accepts connections, `serve` prints exactly one line to stdout —
 `listening http://127.0.0.1:<port>` — so a launcher using `--port 0` learns the

@@ -126,6 +126,9 @@ pub fn find_ui_dir() -> Option<PathBuf> {
 
 /// The shared state for `config`, with its work folders created.
 pub fn build_state(config: &mut ServerConfig) -> std::io::Result<Arc<AppState>> {
+    // An upload arrives alone: a .gltf naming a file beside it could only
+    // reach other uploads.
+    schemgen_core::mesh::allow_external_files(false);
     let uploads = config.work_dir.join("uploads");
     let outputs = config.work_dir.join("outputs");
     std::fs::create_dir_all(&uploads)?;

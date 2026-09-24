@@ -8,8 +8,8 @@ Two ways to run it, one pipeline:
 
 | | Surface | Start here | Needs |
 |---|---|---|---|
-| 1 | **CLI** — `schemgen2 convert model.glb`, scriptable, no server, no browser | [docs/cli.md](docs/cli.md) | Rust, Python |
-| 2 | **Web app** — drag and drop, 3D preview, live settings | [docs/web.md](docs/web.md) | Rust, Python, Node |
+| 1 | **CLI** — `schemgen2 convert model.glb`, scriptable, no server, no browser | [docs/cli.md](docs/cli.md) | Rust |
+| 2 | **Web app** — drag and drop, 3D preview, live settings | [docs/web.md](docs/web.md) | Rust, Node |
 
 Plus the [**HTTP API**](docs/api.md) the web app is a client of, the
 [**roadmap**](docs/roadmap.md) for the UI redesign, the in-game mod and
@@ -33,28 +33,23 @@ in-process, the web app posts to the server, and they meet in the same
 | | Version | Needed for |
 |---|---|---|
 | **Rust** | 1.88+ | the converter itself — CLI and server |
-| **Python** | 3.10+ with `trimesh[easy] numpy scipy Pillow` | mesh voxelization and color sampling |
 | **Node** | 22+ | building the web UI only — the CLI does not need it |
 
-The Rust binary shells out to Python for voxelization. By default that is the
-`python` (Windows) / `python3` (Linux, macOS) on your `PATH`; to use another
-interpreter — typically a virtualenv's — pass `--python <path>` to `convert` or
-`serve`, or set `SCHEMGEN_PYTHON`.
+The binary is self-contained: loading the model, voxelizing and color sampling
+are all Rust. (SchemGen2 2.0 ran those in Python; builds made with
+`--features python-voxelizer` can still do so with `--voxelizer python`, for
+one release — see [docs/pipeline.md](docs/pipeline.md#parity-with-the-python-helper).)
 
 ## Quick start
 
 ### CLI — convert one model, no server
 
 ```bash
-# 1. Python dependencies (in a venv, or however you manage them)
-python3 -m venv .venv && source .venv/bin/activate
-pip install "trimesh[easy]" numpy scipy Pillow
-
-# 2. Build
+# 1. Build
 cd backend
 cargo build --release
 
-# 3. Convert
+# 2. Convert
 ./target/release/schemgen2 convert ../model.glb --max-size 128 -d ~/schematics
 ```
 
@@ -91,8 +86,8 @@ cd frontend && npm run dev                   # :5173, proxies /api to :3001
 ```
 
 On Windows, [`run_server.bat`](run_server.bat) does that development pair for
-you: it checks Python and `trimesh`, builds the backend if needed, installs npm
-dependencies if needed, starts both and opens the browser.
+you: it builds the backend if needed, installs npm dependencies if needed,
+starts both and opens the browser.
 
 The web app adds what a CLI cannot: orbiting the model in 3D and dragging the
 key light direction, a low-resolution live block preview before you commit, a
@@ -143,7 +138,11 @@ schemgen2/
 │   │   │   ├── settings.rs  Every setting, its default and range
 │   │   │   ├── schema.rs    The settings schema UIs render from
 │   │   │   ├── pipeline.rs  voxelize → adjust → dither → match → BlockGrid
-│   │   │   ├── voxelizer/   Drives the Python subprocess
+│   │   │   ├── mesh.rs      glTF loading: scene graph, transforms, materials
+│   │   │   ├── voxel.rs     Surface voxelization
+│   │   │   ├── sample.rs    Per-voxel color sampling and the lighting model
+│   │   │   ├── rng.rs       NumPy's random stream, bit for bit
+│   │   │   ├── voxelizer/   Runs the above, or the Python helper (feature-gated)
 │   │   │   ├── palette.rs   CIELAB, CIEDE2000, KD-tree matching
 │   │   │   ├── targets.rs   Minecraft versions and their data versions
 │   │   │   ├── formats/     NBT writer/reader, .litematic
@@ -151,7 +150,8 @@ schemgen2/
 │   │   │   └── …            dithering, color tables, anti-grief list
 │   │   ├── server/          schemgen-server: API v2 + v1, jobs, events, auth
 │   │   └── cli/             schemgen2: the binary — convert, serve, …
-│   ├── scripts/             Python: voxelize.py, sample_colors.py + its tests
+│   ├── scripts/             2.0's Python voxelizer, for --voxelizer python and
+│   │                        the parity harness (crates/core/examples/parity.rs)
 │   ├── fixtures/            Small test models (tools/make_fixtures.py)
 │   └── data/                color_table_safe.json — the curated palette
 ├── frontend/                Vite React web app
@@ -178,7 +178,6 @@ light and only the curated anti-grief blocks are kept.
 
 ```bash
 cd backend && cargo test                              # core, server and CLI
-cd backend/scripts && python test_sample_colors.py    # the color sampler
 cd frontend && npm run lint && npm run build          # lint + production build
 ```
 
@@ -186,12 +185,14 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of it on
 Linux and Windows, plus `cargo fmt --check`, `cargo clippy -D warnings` and
 `prettier --check`.
 
-The Rust tests cover the CIEDE2000 implementation against reference values, the
-KD-tree's pruning and the match cache against linear scans, the NBT writer and
-reader, the settings schema, and every API route. The server tests that run
-real conversions need the Python voxelizer (`SCHEMGEN_PYTHON` picks the
-interpreter) and say so when they skip. The Python tests cover the color sampler and the de-lighting model.
-The web preview's GLSL mirror of that model has no assertion to make, so it is
+The Rust tests cover the glTF loader, the voxelizer and the color sampler, the
+CIEDE2000 implementation against reference values, the KD-tree's pruning and
+the match cache against linear scans, the NBT writer and reader, the settings
+schema, and every API route with real conversions. CI also converts the
+fixtures for every Minecraft version and format and reads them back with
+independent readers, and holds the Rust voxelizer to 2.0's Python one with a
+parity harness ([docs/pipeline.md](docs/pipeline.md#parity-with-the-python-helper)).
+The web preview's GLSL mirror of the lighting model has no assertion to make, so it is
 checked by compiling it against a real WebGL context — run the dev server and
 open `/shader-check.html`.
 
@@ -201,6 +202,7 @@ This is a Rust rewrite of an earlier Python/Flask converter. The changes that
 mattered: CIEDE2000 instead of Euclidean LAB, K-means instead of Mean Shift for
 the color table, hollow instead of solid voxelization, a raw NBT writer instead
 of `litemapy`, and multi-threaded conversion instead of single-threaded Python.
+The voxelizer and color sampler followed in 2.1, ported from Python to Rust.
 
 ## License
 

@@ -15,11 +15,12 @@ use std::time::Instant;
 
 use rayon::prelude::*;
 
+use crate::dither;
 use crate::error::{Error, Result};
 use crate::grid::BlockGrid;
 use crate::palette::Palette;
 use crate::settings::Settings;
-use crate::{dither, voxelizer};
+use crate::voxelizer::{self, Voxels};
 
 /// Dither amplitude in RGB units — about 11% of the range.
 const DITHER_STRENGTH: f32 = 28.0;
@@ -101,14 +102,6 @@ pub fn run(
 ) -> Result<BlockGrid> {
     let started = Instant::now();
     check_input(input)?;
-    let checkpoint = |progress: &mut dyn Progress| {
-        if progress.is_cancelled() {
-            Err(Error::Cancelled)
-        } else {
-            Ok(())
-        }
-    };
-
     progress.update(
         Stage::Voxelize,
         0.02,
@@ -119,6 +112,37 @@ pub fn run(
         },
     );
     let voxels = voxelizer::voxelize(input, settings, progress)?;
+    let grid = blocks(voxels, settings, palette, progress)?;
+
+    let [x, y, z] = grid.size;
+    progress.update(
+        Stage::Done,
+        1.0,
+        &format!(
+            "{} blocks, {} kinds, {x}×{y}×{z}, {:.1}s",
+            grid.len(),
+            grid.names.len(),
+            started.elapsed().as_secs_f32()
+        ),
+    );
+    Ok(grid)
+}
+
+/// The blocks for voxels a voxelizer produced: adjust, dither and match their
+/// colors, or fill them with the default block when color sampling is off.
+pub fn blocks(
+    voxels: Voxels,
+    settings: &Settings,
+    palette: &Palette,
+    progress: &mut dyn Progress,
+) -> Result<BlockGrid> {
+    let checkpoint = |progress: &mut dyn Progress| {
+        if progress.is_cancelled() {
+            Err(Error::Cancelled)
+        } else {
+            Ok(())
+        }
+    };
     let n = voxels.coords.len();
     if n == 0 {
         return Err(Error::NoVoxels);
@@ -167,18 +191,6 @@ pub fn run(
             voxels.pitch,
         )
     };
-
-    let [x, y, z] = grid.size;
-    progress.update(
-        Stage::Done,
-        1.0,
-        &format!(
-            "{} blocks, {} kinds, {x}×{y}×{z}, {:.1}s",
-            grid.len(),
-            grid.names.len(),
-            started.elapsed().as_secs_f32()
-        ),
-    );
     Ok(grid)
 }
 

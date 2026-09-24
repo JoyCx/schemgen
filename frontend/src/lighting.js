@@ -27,8 +27,8 @@ export function lightAngles([x, y, z]) {
   }
 }
 
-// Mirrors LightingOptions::default() in backend/src/types.rs, which in turn
-// mirrors DEFAULT_LIGHTING in backend/scripts/sample_colors.py. The angles here
+// Mirrors the default lighting settings in backend/crates/core/src/settings.rs
+// (served as the defaults of GET /api/schema). The angles here
 // are that default direction (0.35, 0.85, 0.40) written as two numbers a slider
 // can hold.
 export const LIGHT_DEFAULTS = {

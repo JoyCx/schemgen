@@ -18,13 +18,17 @@ pub mod dither;
 pub mod error;
 pub mod formats;
 pub mod grid;
+pub mod mesh;
 pub mod palette;
 pub mod pipeline;
+pub mod rng;
+pub mod sample;
 pub mod schema;
 pub mod settings;
 pub mod targets;
 pub mod thumbnail;
 pub mod types;
+pub mod voxel;
 pub mod voxelizer;
 
 pub use availability::{BlockVersions, PaletteSet};

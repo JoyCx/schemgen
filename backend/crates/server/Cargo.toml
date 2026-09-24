@@ -7,6 +7,9 @@ rust-version.workspace = true
 license-file.workspace = true
 publish.workspace = true
 
+[features]
+python-voxelizer = ["schemgen-core/python-voxelizer"]
+
 [dependencies]
 schemgen-core.workspace = true
 

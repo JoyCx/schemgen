@@ -32,6 +32,24 @@ fn usage_error(message: &str, help: &str) -> ExitCode {
     ExitCode::from(2)
 }
 
+/// `--voxelizer` (or `SCHEMGEN_VOXELIZER`), and `--python` for the Python one.
+fn choose_voxelizer(args: &args::ParsedArgs) -> Result<(), String> {
+    use schemgen_core::voxelizer::{set_backend, Backend};
+    let from_env = std::env::var("SCHEMGEN_VOXELIZER")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
+    if let Some(name) = args.get("voxelizer").map(str::to_string).or(from_env) {
+        set_backend(Backend::parse(&name)?);
+    }
+    if let Some(python) = args.get("python") {
+        #[cfg(feature = "python-voxelizer")]
+        schemgen_core::voxelizer::set_python(python);
+        #[cfg(not(feature = "python-voxelizer"))]
+        eprintln!("warning: --python {python} is ignored — this build voxelizes natively");
+    }
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let args = match args::parse(&argv) {
@@ -49,8 +67,8 @@ fn main() -> ExitCode {
         "help" | "" | "serve" => {}
         _ => init_logging("warn"),
     }
-    if let Some(python) = args.get("python") {
-        schemgen_core::voxelizer::set_python(python);
+    if let Err(e) = choose_voxelizer(&args) {
+        return usage_error(&e, args::HELP);
     }
 
     match command {

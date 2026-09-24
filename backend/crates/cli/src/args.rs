@@ -53,8 +53,9 @@ FILES:
 CONVERSION:
     --target <VERSION>    Default Minecraft version (default 1.21.8)
     --max-jobs <N>        Conversions running at once (default: CPU count)
-    --python <PATH>       Python interpreter with trimesh installed (default python3,
-                          python on Windows; also SCHEMGEN_PYTHON)
+    --voxelizer <NAME>    rust (default), or python in builds with the
+                          python-voxelizer feature (also SCHEMGEN_VOXELIZER)
+    --python <PATH>       Interpreter for the python voxelizer (also SCHEMGEN_PYTHON)
     --palette <FILE>      Color table to use instead of the built-in one
 
 PROCESS:
@@ -111,8 +112,10 @@ LIGHTING SEPARATION (see docs/pipeline.md):
 
 RUN:
     --threads <N>             Convert N files at once (default 1)
-    --python <PATH>           Python interpreter with trimesh installed (default
-                              python3, python on Windows; also SCHEMGEN_PYTHON)
+    --voxelizer <NAME>        rust (default), or python in builds with the
+                              python-voxelizer feature (also SCHEMGEN_VOXELIZER)
+    --python <PATH>           Interpreter for the python voxelizer (also
+                              SCHEMGEN_PYTHON)
     --palette <FILE>          Color table to use instead of the built-in one
     -q, --quiet               No progress lines
     -j, --json                Print a JSON result object on stdout
@@ -155,6 +158,7 @@ const VALUE_OPTS: &[&str] = &[
     "max-jobs",
     "pid-file",
     "python",
+    "voxelizer",
     "palette",
 ];
 

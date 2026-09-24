@@ -11,6 +11,9 @@ publish.workspace = true
 name = "schemgen2"
 path = "src/main.rs"
 
+[features]
+python-voxelizer = ["schemgen-core/python-voxelizer", "schemgen-server/python-voxelizer"]
+
 [dependencies]
 schemgen-core.workspace = true
 schemgen-server.workspace = true

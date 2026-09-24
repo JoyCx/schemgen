@@ -7,8 +7,15 @@ rust-version.workspace = true
 license-file.workspace = true
 publish.workspace = true
 
+[features]
+# Keep SchemGen2 2.0's Python/trimesh voxelizer as a runtime option
+# (`--voxelizer python`) — for one release, and for the parity harness.
+python-voxelizer = []
+
 [dependencies]
+base64.workspace = true
 flate2.workspace = true
+gltf.workspace = true
 image.workspace = true
 kiddo.workspace = true
 log.workspace = true
@@ -16,3 +23,7 @@ rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[[example]]
+name = "parity"
+required-features = ["python-voxelizer"]

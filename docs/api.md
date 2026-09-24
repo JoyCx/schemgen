@@ -74,13 +74,15 @@ the size limit, 422 for a model that could not be converted.
   "data_version": 4440,
   "schematic_version": 7,
   "os": "windows",
-  "auth": false
+  "auth": false,
+  "voxelizer": "rust"
 }
 ```
 
 Cheap and side-effect free, and the one route that never needs the token, so
 a client can check the server is up before it has credentials. `auth` says
-whether the other routes do.
+whether the other routes do. `voxelizer` is `python` only when a build with the
+`python-voxelizer` feature was started with `--voxelizer python`.
 
 ### `GET /api/schema`
 

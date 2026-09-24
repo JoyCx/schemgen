@@ -72,7 +72,8 @@ pub fn lab_to_rgb(lab: &Lab) -> Rgb {
     }
 }
 
-/// CIEDE2000 using f64 internally for accuracy.
+/// CIEDE2000, squared, computed in f64 for accuracy. Ranking needs no square
+/// root; take one for the ΔE₀₀ itself.
 ///
 /// The reference form; matching uses [`ciede2000_pre`], which the tests hold
 /// bit-identical to this.
@@ -110,7 +111,7 @@ impl LabTerms {
     }
 }
 
-/// CIEDE2000 over pre-widened colors. Identical arithmetic to [`ciede2000`].
+/// Squared CIEDE2000 over pre-widened colors. Identical arithmetic to [`ciede2000`].
 #[inline]
 pub fn ciede2000_pre(l1: &LabTerms, l2: &LabTerms) -> f32 {
     let (ll1, a1, b1) = (l1.l, l1.a, l1.b);
