@@ -183,6 +183,13 @@ version are used.*
 **Remembered** between visits: the output folder and whether it is used, the
 target, the format. Everything else starts from the defaults.
 
+**The mod** shows the same sections with three fields fewer: *File format*
+(it always writes `.litematic`, since the result goes to Litematica), *Save
+into folder* (it saves into the instance's `schematics` folder, set in its own
+settings screen) and *Parallel conversions* (it converts one model at a time).
+It remembers the settings the player changed, except the target, which
+follows the game, and the schematic name, which belongs to one model.
+
 ## Queue
 
 - **Add models** opens a file picker (`.glb`, `.gltf`, several at once);
