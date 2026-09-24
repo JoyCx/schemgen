@@ -888,3 +888,11 @@ body {
   background: var(--accent);
   color: #fff;
 }
+
+.batch-item--cancelled {
+  opacity: 0.7;
+}
+
+.batch-item--cancelled .batch-item-status {
+  color: var(--text-muted);
+}

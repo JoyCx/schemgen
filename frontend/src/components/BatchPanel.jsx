@@ -5,6 +5,7 @@ const STATUS_LABEL = {
   running: 'Converting',
   done: 'Done',
   error: 'Failed',
+  cancelled: 'Cancelled',
 }
 
 export default function BatchPanel({

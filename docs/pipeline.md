@@ -1,32 +1,40 @@
 # The conversion pipeline
 
-Everything below is shared by both front ends. The CLI and the HTTP API end up
-in the same `convert()` with the same defaults, so a given model and settings
-produce the same file whichever door you came in through.
+Everything below is shared by every front end. The CLI, the HTTP API (and so
+the web app and the mod) build the same `Settings` from the same defaults and
+call the same `pipeline::run`, so a given model and settings produce the same
+blocks whichever door they came in through.
 
 ```
 GLB/glTF
    │
    ├─ 1. voxelize + sample surface colors   backend/scripts/voxelize.py
    │                                        backend/scripts/sample_colors.py
-   ├─ 2. brightness / contrast / saturation backend/src/converter.rs
-   ├─ 3. ordered dithering                  backend/src/dithering.rs
-   ├─ 4. CIEDE2000 block match              backend/src/palette.rs
-   └─ 5. write NBT                          backend/src/litematic.rs
-                                            → .litematic
+   ├─ 2. brightness / contrast / saturation crates/core/src/pipeline.rs
+   ├─ 3. ordered dithering                  crates/core/src/dither.rs
+   ├─ 4. CIEDE2000 block match              crates/core/src/palette.rs
+   │        → BlockGrid                     crates/core/src/grid.rs
+   └─ 5. write the schematic                crates/core/src/formats/
 ```
 
-One Python subprocess does stages 1 and 2's input: the GLB is parsed once for
-both voxelization and color sampling, and only one interpreter starts.
+(Paths under `crates/` are relative to `backend/`.) Stages 1–4 are
+`pipeline::run`, which returns a `BlockGrid` — positions, a block per
+position, and where the grid sits in the model. A conversion writes that grid
+with one of the `formats` writers; a preview returns it as it is.
+
+One Python subprocess does stage 1: the GLB is parsed once for both
+voxelization and color sampling, and only one interpreter starts. It is
+polled, not waited on, so a cancelled conversion kills it.
 
 ## 1. Voxelization
 
 Surface-only ("hollow"): the interior is never filled, so a closed model becomes
-a shell rather than a solid mass of blocks. `--hollow` / `--solid` are accepted
-by the script for compatibility but ignored.
+a shell rather than a solid mass of blocks.
 
 `max_size` sets the longest axis in blocks and the voxel pitch is derived from
-it, unless an explicit `voxel_size` overrides it.
+it, unless an explicit `voxel_size` overrides it. A point on the model's far
+face belongs to the last layer of blocks rather than opening one more, so the
+longest axis is exactly `max_size` blocks.
 
 ## 2. Color sampling
 
@@ -41,10 +49,13 @@ before block matching. Off with `--no-dither` / the UI toggle.
 
 ## 4. Color matching
 
-1. Query color → CIELAB
-2. KD-tree K-nearest-neighbour search (Euclidean, K=7)
-3. Rank those K by **CIEDE2000** perceptual distance
-4. Best match wins
+1. Colors are quantized to 8 bits per channel, and each distinct color is
+   matched once — after dithering a model has far fewer distinct colors than
+   voxels, so this is a fraction of the work of matching every voxel.
+2. Color → CIELAB
+3. KD-tree K-nearest-neighbour search (Euclidean, K=7)
+4. Rank those K by **CIEDE2000** perceptual distance
+5. Best match wins
 
 CIEDE2000 rather than plain LAB distance because it accounts for
 lightness-dependent chroma/hue weighting, hue rotation (which fixes the blue
@@ -52,22 +63,20 @@ region), and chroma-hue interaction.
 
 ## Block palette
 
-The backend loads `backend/data/color_table_safe.json`: a curated **anti-grief
-full-block palette** (~180 blocks). Every entry is a valid, placeable, full-cube
-block that cannot burn, fall, decay, be picked up by endermen, or interact with
-redstone or storage. Unwaxed copper is stored as its waxed variant so builds
-never oxidize.
+The palette is `backend/data/color_table_safe.json`, compiled into the binary:
+a curated **anti-grief full-block palette** (~180 blocks). Every entry is a
+valid, placeable, full-cube block that cannot burn, fall, decay, be picked up
+by endermen, or interact with redstone or storage. Unwaxed copper is stored as
+its waxed variant so builds never oxidize.
 
 There is intentionally no user-selectable "safety mode": a schematic that needs
 scaffolding to stand up is not a useful schematic.
 
-If the file is missing, a 39-block built-in fallback is used and a warning is
-logged.
-
 Rebuild it from a folder of block PNGs with
 [`build-table`](cli.md#build-table); it computes each block's alpha-weighted
 mean color in linear light and applies the curation filter in
-`backend/src/blocks.rs`.
+`crates/core/src/blocks.rs`. A rebuilt table can be used without recompiling
+through `--palette`.
 
 ## Lighting separation (de-light)
 
@@ -82,7 +91,7 @@ the camera never changes the result.
 
 | Control | Default | What it does |
 |---|---|---|
-| Light azimuth / elevation | 41° / 58° | Where the key light is assumed to be |
+| Light direction | (0.35, 0.85, 0.40) — azimuth 41°, elevation 58° | Where the key light is assumed to be |
 | De-light | 0 (off) | Subtracts the specular lobe, then divides out the diffuse term |
 | Assumed gloss | 0.5 | How sharp a highlight to assume was baked in; 0 disables the lobe entirely |
 | Ambient | 0.32 | Light still reaching surfaces facing away |
@@ -102,36 +111,17 @@ conversion while those two agree** — change one and change the other.
 
 ## Minecraft version
 
-Schematics are written as Litematica schematic **version 6** with
-`MinecraftDataVersion` **4440 (Minecraft 1.21.8)** by default.
-
-| Minecraft | Data version |
-|---|---|
-| 1.21.8 | 4440 (default) |
-| 1.21.11 | 4671 |
-
-Override per run with `--data-version`, or globally with the
-`SCHEMGEN_DATA_VERSION` environment variable; the constant lives in
-`backend/src/litematic.rs`.
-
-The stamp must stay **at or above** the newest block in the palette —
-`color_table_safe.json` ships `resin_block`, `resin_bricks` and
-`chiseled_resin_bricks`, added in 1.21.4 — because declaring an older version
-makes Minecraft's DataFixerUpper try to upgrade block names that did not exist
-yet. Litematica reads schematics stamped *below* the running game, so the
-default loads fine in 1.21.8 and everything after it.
-
-To read the value out of a schematic Litematica itself saved:
-
-```bash
-python -c "import gzip,struct;d=gzip.open('some.litematic','rb').read();i=d.find(b'MinecraftDataVersion');print(struct.unpack('>i',d[i+20:i+24])[0])"
-```
+Every conversion has a **target**: the Minecraft version the schematic is for,
+`1.21.8` unless told otherwise (`--target`, the `target` setting, or the
+server's `--target`). The target fixes the `MinecraftDataVersion` stamped into
+the file and Litematica's schematic `Version` (6 before 1.21, 7 from it). See
+[docs/versions.md](versions.md) for the table and what each number does.
 
 ## Reproducibility
 
-The same model with the same settings produces a **byte-identical**
-`.litematic`, across separate runs and separate processes. Three things have to
-hold for that, and all three are enforced:
+The same model with the same settings produces the same blocks, across
+separate runs and separate processes. Three things have to hold for that, and
+all three are enforced:
 
 1. **Seeded surface sampling** — `voxelize_surface()`
    (`backend/scripts/voxelize.py`) is seeded with `0x5CE2`. Face sampling is
@@ -141,40 +131,48 @@ hold for that, and all three are enforced:
 2. **Seeded color scatter** — `supersample()`
    (`backend/scripts/sample_colors.py`), same seed, same reason.
 3. **Stable palette order** — `Palette::from_table`
-   (`backend/src/palette.rs`) walks the color table in sorted block-name order
-   rather than the `HashMap`'s own, which Rust randomizes per process. Entry
-   indices break ties between equally distant blocks, so an unstable order
-   changed a handful of blocks on every restart even though both samplers were
-   seeded. `entries_are_ordered_by_block_name` locks this down.
+   (`crates/core/src/palette.rs`) walks the color table in sorted block-name
+   order rather than the `HashMap`'s own, which Rust randomizes per process.
+   Entry indices break ties between equally distant blocks, so an unstable
+   order changed a handful of blocks on every restart even though both
+   samplers were seeded. `entries_are_ordered_by_block_name` locks this down.
 
-Note that the schematic *name* is part of the file's metadata, so converting
-the same model under two names correctly yields two different files.
+The *file* also records when it was made (`TimeCreated` / `TimeModified`, as
+Litematica shows them). Set `SOURCE_DATE_EPOCH` (seconds, the
+reproducible-builds convention) to stamp a fixed time instead, and the same
+model, settings and name produce a byte-identical `.litematic`. The schematic
+*name* is part of the file too, so the same model under two names correctly
+yields two different files.
 
 ## Testing
 
 ```bash
 cd backend && cargo test
-# 29 passed; 0 failed
-#   CIEDE2000 identical / reference / wide gap, palette matching + KD-tree pruning
-#   Litematic empty input + single block write
-#   Anti-grief block filtering, copper remapping
-#   Output-folder sanitizing, traversal rejection, batch de-duplication
-#   Launcher instance scanning for schematics folders
-#   CLI argument parsing, option defaults, clamps and usage errors
-#   Deterministic palette entry order
+#   core:   CIEDE2000, KD-tree pruning and the match cache against linear
+#           scans, settings ranges, the schema, targets, the NBT writer and
+#           reader, the .litematic bit packing read back cell by cell, the
+#           thumbnail renderer, anti-grief filtering
+#   server: every v2 and v1 route, events, cancelling, the token and
+#           host/origin checks, the TTL sweep
+#   cli:    argument parsing, defaults, clamps and usage errors
 ```
 
 ```bash
 cd backend/scripts && python test_sample_colors.py
-# 23/23 passed — area averaging, linear light, alpha, lighting separation
+# area averaging, linear light, alpha, lighting separation, exact max_size
 ```
 
-The de-light preview shader is checked by compiling it against a real WebGL
-context: run the dev server and open `/shader-check.html`.
+The server tests that run real conversions need the Python voxelizer and skip,
+saying so, when no interpreter with `trimesh` is found (`SCHEMGEN_PYTHON`
+picks one). The de-light preview shader is checked by compiling it against a
+real WebGL context: run the dev server and open `/shader-check.html`.
 
 ## Performance notes
 
-- Block matching and the color adjustments are Rayon-parallel.
-- The voxelizer's memory use is bounded by `--ram-limit` (GB, default 4).
-- Batch conversions run `threads` at a time, each in its own blocking thread
-  with its own runtime, so one Python subprocess never starves the others.
+- Color adjustment, dithering and block matching are Rayon-parallel, and
+  matching does each distinct quantized color once.
+- The voxelizer's memory use is bounded by `ram_limit` (GB, default 4).
+- Schematics are streamed through the gzip encoder as they are written rather
+  than built in memory first.
+- The server runs at most `--max-jobs` conversions at once (default: the CPU
+  count); a batch request further limits its own files with `threads`.

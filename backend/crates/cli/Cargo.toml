@@ -1,0 +1,20 @@
+[package]
+name = "schemgen2"
+description = "GLB to Litematica converter — command line and server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "schemgen2"
+path = "src/main.rs"
+
+[dependencies]
+schemgen-core.workspace = true
+schemgen-server.workspace = true
+
+env_logger.workspace = true
+log.workspace = true
+serde_json.workspace = true

@@ -1,7 +1,7 @@
 # CLI
 
-`schemgen2` is one binary with four commands. No server, no browser, no Node —
-`convert` runs the whole pipeline in-process and writes a `.litematic`.
+`schemgen2` is one binary. No server, no browser, no Node — `convert` runs the
+whole pipeline in-process and writes a `.litematic`.
 
 ```bash
 cd backend
@@ -14,7 +14,9 @@ cargo build --release
 | `schemgen2 serve` | HTTP API + web UI ([docs/api.md](api.md), [docs/web.md](web.md)) |
 | `schemgen2 convert <FILE>...` | Convert models to `.litematic` headlessly |
 | `schemgen2 palette` | Print the blocks a conversion may choose from |
-| `schemgen2 build-table <DIR> <OUT>` | Rebuild the color table from a texture pack |
+| `schemgen2 targets` | Print the Minecraft versions a schematic can target |
+| `schemgen2 schema` | Print the settings schema (what `GET /api/schema` serves) as JSON |
+| `schemgen2 build-table <DIR> [OUT]` | Rebuild the color table from a texture pack |
 | `schemgen2 help [COMMAND]`, `schemgen2 version` | Usage and version |
 
 With no command at all it serves, so old shortcuts that ran the bare binary
@@ -43,13 +45,27 @@ schemgen2 convert models/*.glb -d ~/schematics --threads 4
 
 With neither `-o` nor `-d`, the file lands beside its input. Two identically
 named models in one run become `name.litematic` and `name-2.litematic` rather
-than overwriting each other.
+than overwriting each other. Files are written under a temporary name and
+renamed into place, so a folder Litematica is watching never shows half a
+schematic.
+
+### Target
+
+| Option | Default | Meaning |
+|---|---|---|
+| `-t, --target <VERSION>` | `1.21.8` | Minecraft version to write for — see `schemgen2 targets` |
+| `--data-version <N>` | | Stamp this exact `MinecraftDataVersion` instead. Also `SCHEMGEN_DATA_VERSION`. |
+
+The target decides the `MinecraftDataVersion` stamped into the file and
+Litematica's schematic version (6 before 1.21, 7 from 1.21), and limits the
+palette to blocks that exist in that version — see
+[docs/versions.md](versions.md).
 
 ### Geometry
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--max-size <N>` | 128 | Longest axis of the result, in blocks |
+| `--max-size <N>` | 128 | Longest axis of the result, in blocks (at most 2048) |
 | `--voxel-size <F>` | derived | Explicit voxel pitch in model units; overrides `--max-size` |
 | `--ram-limit <GB>` | 4 | Memory budget for the color sampler |
 
@@ -79,13 +95,13 @@ for what each one does.
 | `--highlight-recovery <F>` | 1 |
 | `--delight <F>` | 0 (off) |
 
-### Output format and running
+### Running
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--data-version <N>` | 4440 | `MinecraftDataVersion` stamped into the file. 4440 = 1.21.8, 4671 = 1.21.11. Also `SCHEMGEN_DATA_VERSION`. |
 | `--threads <N>` | 1 | Convert N files concurrently |
 | `--python <PATH>` | `python3` (`python` on Windows) | Interpreter that has `trimesh` installed. Also `SCHEMGEN_PYTHON`. |
+| `--palette <FILE>` | built in | Color table to use instead of the built-in one. Also `SCHEMGEN_PALETTE`. |
 | `-q, --quiet` | | No progress lines |
 | `-j, --json` | | Machine-readable result on stdout |
 
@@ -112,6 +128,7 @@ An unknown option is an error rather than something silently ignored, so
 ```json
 {
   "ok": true,
+  "target": "1.21.8",
   "data_version": 4440,
   "files": [
     {
@@ -121,7 +138,7 @@ An unknown option is an error rather than something silently ignored, so
       "name": "model",
       "voxels": 5293,
       "unique_blocks": 96,
-      "grid": [49, 19, 22],
+      "grid": [48, 19, 22],
       "seconds": 1.6
     }
   ]
@@ -129,7 +146,48 @@ An unknown option is an error rather than something silently ignored, so
 ```
 
 A failed file has `"ok": false` and an `"error"` string in place of the stats,
-and the run's `ok` is `false`.
+and the run's `ok` is `false`. `grid` is the schematic's size, x × y × z.
+
+## serve
+
+```bash
+schemgen2 serve                         # http://localhost:3001, API + web UI
+schemgen2 serve --port 0 --token-file ~/.schemgen/token --exit-with-stdin
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--port <N>` | 3001 (or `PORT`) | Port to bind; `0` lets the OS pick one |
+| `--host <ADDR>` | `127.0.0.1` | Address to bind. Anything else exposes the server — pair it with `--token` |
+| `--allow-host <NAMES>` | | Extra host names requests may use, comma-separated |
+| `--token <T>` | none (or `SCHEMGEN_TOKEN`) | Require `Authorization: Bearer <T>` on every `/api` call but `/api/health` |
+| `--token-file <PATH>` | | Read the token from PATH, or write a new random one there if it is missing |
+| `--work-dir <DIR>` | user cache folder | Where uploads and outputs are kept |
+| `--ui-dir <DIR>` | `frontend/dist` if found (or `SCHEMGEN_UI_DIR`) | Built web UI to serve at `/` |
+| `--job-ttl <HOURS>` | 24 | Forget finished jobs and delete their files after this long; 0 never |
+| `--target <VERSION>` | `1.21.8` | Default target for requests that do not name one |
+| `--max-jobs <N>` | CPU count | Conversions running at once |
+| `--exit-with-stdin` | | Stop when standard input closes |
+| `--pid-file <PATH>` | | Write the process id there while running |
+| `--python`, `--palette` | | As for `convert` |
+
+Once it accepts connections, `serve` prints exactly one line to stdout —
+`listening http://127.0.0.1:<port>` — so a launcher using `--port 0` learns the
+port. Logs go to stderr. See [docs/api.md](api.md#authentication-and-exposure)
+for what the token and host checks protect against.
+
+## targets
+
+```bash
+schemgen2 targets          # version, data version, Litematica version
+schemgen2 targets --json
+```
+
+## schema
+
+```bash
+schemgen2 schema           # every setting: type, range, default, group, label, help
+```
 
 ## palette
 
@@ -147,19 +205,19 @@ cd backend
 cargo run --release -- build-table ../texture_pack data/color_table_safe.json
 ```
 
-Each block's alpha-weighted mean color is computed in linear light, and only
-curated anti-grief full blocks are kept — see [docs/pipeline.md](pipeline.md#block-palette).
+`DIR` is the `assets/minecraft/textures/block` folder of an extracted client
+jar or resource pack; `OUT` defaults to `color_table_safe.json` in the current
+folder. Each block's alpha-weighted mean color is computed in linear light,
+and only curated anti-grief full blocks are kept — see
+[docs/pipeline.md](pipeline.md#block-palette). The table in the binary changes
+when it is rebuilt; to use a new table without rebuilding, pass it with
+`--palette`.
 
-## Where the palette is found
+## Where the palette comes from
 
-`convert` and `palette` need `data/color_table_safe.json`. It is looked for in
-this order, so the binary works from any directory:
-
-1. `$SCHEMGEN_DATA_DIR`
-2. `./data`, then `./backend/data`
-3. `<the binary's folder>/data`
-4. two levels above the binary — how `backend/target/release/schemgen2` finds `backend/data`
-5. the source tree the binary was compiled from
-
-If none of them has the file, a 39-block built-in fallback is used and a warning
-is logged; conversions still succeed but the color match is much coarser.
+The curated color table (`backend/data/color_table_safe.json`) is compiled into
+the binary, so it needs no data folder beside it. To use another table — one
+rebuilt from a resource pack, say — pass `--palette <file>`, or set
+`SCHEMGEN_PALETTE`, or point `SCHEMGEN_DATA_DIR` at a folder holding a
+`color_table_safe.json`. Whatever the source, only curated anti-grief blocks
+are kept.

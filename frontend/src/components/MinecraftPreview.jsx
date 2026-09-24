@@ -123,41 +123,45 @@ export default function MinecraftPreview({ preview, palette, loading, error, onC
       sun.position.set(4, 8, 5)
       scene.add(sun)
 
-      const blocks = preview.blocks || []
-      const grid = preview.grid || [1, 1, 1]
+      // Packed as x, y, z, palette index per block (see api.js decodeBlocks).
+      const blocks = preview.blocks || new Int32Array(0)
+      const names = preview.palette || []
+      const dims = preview.dims || [1, 1, 1]
+      const count = blocks.length / 4
       const group = new THREE.Group()
       scene.add(group)
-      const grouped = new Map()
-      for (const block of blocks) {
-        if (!grouped.has(block.name)) grouped.set(block.name, [])
-        grouped.get(block.name).push(block)
-      }
+      const perBlock = new Array(names.length).fill(0)
+      for (let i = 3; i < blocks.length; i += 4) perBlock[blocks[i]]++
       const geometry = new THREE.BoxGeometry(0.98, 0.98, 0.98)
-      const center = new THREE.Vector3(
-        Number(grid[0]) / 2,
-        Number(grid[1]) / 2,
-        Number(grid[2]) / 2,
-      )
-      for (const [name, entries] of grouped) {
-        const material = blockMaterial(name, palette)
-        const mesh = new THREE.InstancedMesh(geometry, material, entries.length)
-        const matrix = new THREE.Matrix4()
-        entries.forEach((block, index) => {
-          matrix.makeTranslation(
-            block.x + 0.5 - center.x,
-            block.y + 0.5 - center.y,
-            block.z + 0.5 - center.z,
-          )
-          mesh.setMatrixAt(index, matrix)
-        })
-        mesh.instanceMatrix.needsUpdate = true
+      const center = new THREE.Vector3(dims[0] / 2, dims[1] / 2, dims[2] / 2)
+      const meshes = names.map((name, index) => {
+        if (!perBlock[index]) return null
+        const mesh = new THREE.InstancedMesh(
+          geometry,
+          blockMaterial(name, palette),
+          perBlock[index],
+        )
         mesh.frustumCulled = false
         group.add(mesh)
+        return mesh
+      })
+      const filled = new Array(names.length).fill(0)
+      const matrix = new THREE.Matrix4()
+      for (let i = 0; i < blocks.length; i += 4) {
+        const index = blocks[i + 3]
+        matrix.makeTranslation(
+          blocks[i] + 0.5 - center.x,
+          blocks[i + 1] + 0.5 - center.y,
+          blocks[i + 2] + 0.5 - center.z,
+        )
+        meshes[index].setMatrixAt(filled[index]++, matrix)
       }
-      group.scale.setScalar(3.8 / Math.max(Number(grid[0]), Number(grid[1]), Number(grid[2]), 1))
+      for (const mesh of meshes) if (mesh) mesh.instanceMatrix.needsUpdate = true
+      group.scale.setScalar(3.8 / Math.max(dims[0], dims[1], dims[2], 1))
       camera.position.set(4.8, 3.2, 4.8)
       camera.lookAt(0, 0, 0)
-      setStats(`${blocks.length.toLocaleString()} blocks · ${grouped.size} block types`)
+      const kinds = perBlock.filter(Boolean).length
+      setStats(`${count.toLocaleString()} blocks · ${kinds} block types`)
       setRenderError('')
 
       const resize = () => {
@@ -194,8 +198,8 @@ export default function MinecraftPreview({ preview, palette, loading, error, onC
         <div>
           <h3>Minecraft Preview</h3>
           <p>
-            Drag to orbit · wheel to zoom · right-drag to pan. Uses the same blocks as the verified
-            preview .litematic.
+            Drag to orbit · wheel to zoom · right-drag to pan. Built by the same pipeline as the
+            conversion.
           </p>
         </div>
         <span className="preview-status">

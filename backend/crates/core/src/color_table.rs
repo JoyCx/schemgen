@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::error::{Error, Result};
 use crate::palette::rgb_to_lab;
 use crate::types::{BlockColorEntry, ColorTable};
 
@@ -250,8 +251,18 @@ fn texture_mean_linear(tex_path: &Path) -> Option<[f64; 3]> {
 /// When `anti_grief` is set, block IDs pass through [`crate::blocks::sanitize`]
 /// so the resulting table contains only valid, placeable, grief-resistant
 /// full blocks (and unwaxed copper is stored under its waxed ID).
-pub fn build_table(texture_pack_dir: &Path, output_path: &Path, anti_grief: bool) -> ColorTable {
+pub fn build_table(
+    texture_pack_dir: &Path,
+    output_path: &Path,
+    anti_grief: bool,
+) -> Result<ColorTable> {
     log::info!("Scanning textures in: {}", texture_pack_dir.display());
+    if !texture_pack_dir.is_dir() {
+        return Err(Error::Read {
+            path: texture_pack_dir.to_path_buf(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "no such folder"),
+        });
+    }
     let block_to_files = group_textures(texture_pack_dir);
 
     let total = block_to_files.len();
@@ -332,9 +343,89 @@ pub fn build_table(texture_pack_dir: &Path, output_path: &Path, anti_grief: bool
         skipped
     );
 
-    let json = serde_json::to_string_pretty(&table).unwrap();
-    fs::write(output_path, &json).unwrap();
+    if table.is_empty() {
+        return Err(Error::NoTextures(texture_pack_dir.to_path_buf()));
+    }
+
+    let json = serde_json::to_string_pretty(&table).map_err(std::io::Error::other)?;
+    fs::write(output_path, json).map_err(|source| Error::Write {
+        path: output_path.to_path_buf(),
+        source,
+    })?;
     log::info!("Saved color table → {}", output_path.display());
 
-    table
+    Ok(table)
+}
+
+// ── Loading ─────────────────────────────────────────────────────────────
+
+/// The curated table this build ships with, embedded so the binary needs no
+/// data folder next to it.
+pub const BUILTIN_JSON: &str = include_str!("../../../data/color_table_safe.json");
+
+/// The embedded table, curated.
+pub fn builtin() -> ColorTable {
+    curated(serde_json::from_str(BUILTIN_JSON).expect("the embedded color table is valid JSON"))
+}
+
+/// A color table from a JSON file, curated.
+pub fn load(path: &Path) -> Result<ColorTable> {
+    let json = fs::read_to_string(path).map_err(|source| Error::Read {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let table: ColorTable = serde_json::from_str(&json).map_err(|e| Error::Read {
+        path: path.to_path_buf(),
+        source: std::io::Error::new(std::io::ErrorKind::InvalidData, e),
+    })?;
+    Ok(curated(table))
+}
+
+/// Keep only curated anti-grief full blocks, renaming where needed (unwaxed
+/// copper → waxed). Entries whose keys collapse to the same block are merged.
+pub fn curated(table: ColorTable) -> ColorTable {
+    let mut out: ColorTable = HashMap::new();
+    for (name, entries) in table {
+        if let Some(safe_name) = crate::blocks::sanitize(&name) {
+            out.entry(safe_name).or_default().extend(entries);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builtin_table_is_curated_and_complete() {
+        let table = builtin();
+        assert!(table.len() > 150, "{} blocks", table.len());
+        assert!(table
+            .keys()
+            .all(|k| crate::blocks::sanitize(k).as_deref() == Some(k.as_str())));
+    }
+
+    #[test]
+    fn curation_drops_unsafe_blocks_and_waxes_copper() {
+        let entry = || {
+            vec![BlockColorEntry {
+                lab: [50.0, 0.0, 0.0],
+                rgb: [119.0; 3],
+                weight: 1.0,
+            }]
+        };
+        let mut t = ColorTable::new();
+        t.insert("minecraft:oak_planks".into(), entry());
+        t.insert("minecraft:copper_block".into(), entry());
+        let out = curated(t);
+        assert_eq!(out.len(), 1);
+        assert!(out.contains_key("minecraft:waxed_copper_block"));
+    }
+
+    #[test]
+    fn missing_texture_folder_is_an_error() {
+        let out = std::env::temp_dir().join("schemgen_table_test.json");
+        assert!(build_table(Path::new("/no/such/textures"), &out, true).is_err());
+    }
 }

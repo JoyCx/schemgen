@@ -41,17 +41,3 @@ export const LIGHT_DEFAULTS = {
   highlight_recovery: 1,
   delight: 0,
 }
-
-// The multipart fields the backend reads, built from a settings object.
-export function lightingParams(s) {
-  const [x, y, z] = lightVector(s.light_azimuth, s.light_elevation)
-  return {
-    light_dir: `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`,
-    light_ambient: s.light_ambient,
-    light_gloss: s.light_gloss,
-    specular: s.specular,
-    highlight_rejection: s.highlight_rejection,
-    highlight_recovery: s.highlight_recovery,
-    delight: s.delight,
-  }
-}

@@ -128,8 +128,11 @@ def voxelize_surface(mesh, voxel_size, max_samples=8_000_000, seed=0x5CE2):
     bounds_max = mesh.bounding_box.bounds[1]
     extents    = bounds_max - bounds_min
 
-    # Grid dimensions (add 1 to account for floating-point rounding at edges)
-    grid_dims  = (np.ceil(extents / voxel_size) + 1).astype(np.int32)
+    # Cells per axis. A point on the far face (extent / voxel_size exactly)
+    # belongs to the last cell rather than opening a new one, so the longest
+    # axis is max_size blocks, not max_size + 1. The tolerance absorbs the
+    # rounding in extent / (extent / max_size).
+    grid_dims  = np.maximum(np.ceil(extents / voxel_size - 1e-9), 1).astype(np.int32)
 
     # ── 1. Face (area-weighted) sampling ────────────────────────────────
     # Target: ~12 samples per voxel-face worth of surface area so every

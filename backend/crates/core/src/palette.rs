@@ -2,8 +2,10 @@
 //! Uses kiddo's ImmutableKdTree for fast Euclidean pre-filter,
 //! then refines top-K with CIEDE2000.
 
+use crate::error::{Error, Result};
 use crate::types::{ColorTable, Lab, Rgb};
 use kiddo::ImmutableKdTree;
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 pub fn rgb_to_lab(r: f32, g: f32, b: f32) -> Lab {
@@ -74,7 +76,6 @@ pub fn lab_to_rgb(lab: &Lab) -> Rgb {
 ///
 /// The reference form; matching uses [`ciede2000_pre`], which the tests hold
 /// bit-identical to this.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn ciede2000(l1: &Lab, l2: &Lab) -> f32 {
     ciede2000_pre(&LabTerms::new(l1), &LabTerms::new(l2))
 }
@@ -186,6 +187,20 @@ pub fn ciede2000_pre(l1: &LabTerms, l2: &LabTerms) -> f32 {
     ((dl / sl).powi(2) + (dc / sc).powi(2) + (dh / sh).powi(2) + rt * (dc / sc) * (dh / sh)) as f32
 }
 
+/// Pack an sRGB color into 8 bits per channel: `0xRRGGBB`.
+fn quantize(c: [f32; 3]) -> u32 {
+    let q = |v: f32| v.round().clamp(0.0, 255.0) as u32;
+    (q(c[0]) << 16) | (q(c[1]) << 8) | q(c[2])
+}
+
+fn unquantize(key: u32) -> [f32; 3] {
+    [
+        (key >> 16) as u8 as f32,
+        (key >> 8) as u8 as f32,
+        key as u8 as f32,
+    ]
+}
+
 // ── Palette ───────────────────────────────────────────────────────────
 
 /// Upper bound on CIEDE2000's `S_L` term over L ∈ [0, 100], squared and
@@ -209,6 +224,8 @@ pub struct Palette {
     by_l: Vec<u32>,
     l_sorted: Vec<f32>,
     tree: ImmutableKdTree<f32, 3>,
+    /// Display color of each distinct block, for thumbnails and swatches.
+    colors: HashMap<String, [u8; 3]>,
 }
 
 impl Palette {
@@ -220,7 +237,7 @@ impl Palette {
     /// model a different block here and there on every run — enough to change
     /// the schematic's bytes, and the reason conversions were not reproducible
     /// across restarts despite both sampling stages being seeded.
-    pub fn from_table(table: &ColorTable) -> Option<Self> {
+    pub fn from_table(table: &ColorTable) -> Result<Self> {
         let mut block_names: Vec<&String> = table.keys().collect();
         block_names.sort();
 
@@ -233,7 +250,7 @@ impl Palette {
             }
         }
         if names.is_empty() {
-            return None;
+            return Err(Error::EmptyPalette);
         }
         let terms = pts
             .iter()
@@ -247,13 +264,21 @@ impl Palette {
         });
         let l_sorted = by_l.iter().map(|&i| pts[i as usize][0]).collect();
         let tree = ImmutableKdTree::new_from_slice(&pts);
-        Some(Self {
+        let mut colors = HashMap::new();
+        for (name, &[l, a, b]) in names.iter().zip(&pts) {
+            colors.entry(name.clone()).or_insert_with(|| {
+                let rgb = lab_to_rgb(&Lab { l, a, b });
+                [rgb.r as u8, rgb.g as u8, rgb.b as u8]
+            });
+        }
+        Ok(Self {
             names,
             labs: pts,
             terms,
             by_l,
             l_sorted,
             tree,
+            colors,
         })
     }
 
@@ -354,22 +379,49 @@ impl Palette {
         }
     }
 
-    /// Best-matching palette entry index per query. Callers resolve names via
-    /// [`Self::name_of`], avoiding a String allocation per voxel.
-    pub fn match_indices_batch(&self, queries: &[Lab], k: usize) -> Vec<u32> {
-        use rayon::prelude::*;
-        // Each query is independent, so this stays deterministic and ordered.
-        queries
+    /// Best-matching palette entry for each sRGB color (0–255 per channel).
+    ///
+    /// Colors are quantized to 8 bits per channel and each distinct quantized
+    /// color is matched once. After dithering, a model's voxels share far
+    /// fewer distinct colors than there are voxels, so this does a fraction of
+    /// the CIEDE2000 work of matching every voxel. The result depends only on
+    /// the quantized color, so it is as deterministic as matching one by one.
+    /// Callers resolve names with [`Self::name_of`].
+    pub fn match_colors(&self, colors: &[[f32; 3]], k: usize) -> Vec<u32> {
+        let keys: Vec<u32> = colors.par_iter().map(|&c| quantize(c)).collect();
+        let mut distinct = keys.clone();
+        distinct.par_sort_unstable();
+        distinct.dedup();
+        let matched: Vec<u32> = distinct
             .par_iter()
-            .map(|q| self.match_block_index(q, k) as u32)
+            .map(|&key| self.match_block_index(&rgb_to_lab_vec(unquantize(key)), k) as u32)
+            .collect();
+        keys.par_iter()
+            .map(|key| matched[distinct.binary_search(key).expect("key was collected")])
             .collect()
     }
 
     pub fn name_of(&self, index: u32) -> &str {
         &self.names[index as usize]
     }
+
+    /// Number of palette entries (a block can have several).
     pub fn len(&self) -> usize {
         self.names.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    /// Number of distinct blocks.
+    pub fn block_count(&self) -> usize {
+        self.colors.len()
+    }
+
+    /// Display color of a block in the palette.
+    pub fn color_of(&self, name: &str) -> Option<[u8; 3]> {
+        self.colors.get(name).copied()
     }
     pub fn to_palette_json(&self) -> HashMap<String, [f32; 3]> {
         let mut seen: HashSet<String> = HashSet::new();
@@ -387,8 +439,73 @@ impl Palette {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// Stone and a sandy dirt: enough palette for pipeline-level tests.
+    pub(crate) fn two_block_palette() -> Palette {
+        let entry = |lab: [f32; 3], rgb: [f32; 3]| {
+            vec![crate::types::BlockColorEntry {
+                lab,
+                rgb,
+                weight: 1.0,
+            }]
+        };
+        let mut t: ColorTable = HashMap::new();
+        t.insert(
+            "minecraft:stone".into(),
+            entry([50.0, 0.0, 0.0], [119.0, 119.0, 119.0]),
+        );
+        t.insert(
+            "minecraft:dirt".into(),
+            entry([55.0, 5.0, 15.0], [150.0, 128.0, 107.0]),
+        );
+        Palette::from_table(&t).unwrap()
+    }
+
+    #[test]
+    fn empty_table_is_an_error() {
+        assert!(matches!(
+            Palette::from_table(&ColorTable::new()),
+            Err(Error::EmptyPalette)
+        ));
+    }
+
+    /// Matching through the de-duplicating cache must give each voxel exactly
+    /// what matching its (quantized) color on its own gives.
+    #[test]
+    fn match_colors_equals_matching_one_by_one() {
+        let p = Palette::from_table(&crate::color_table::builtin()).unwrap();
+        let mut colors = Vec::new();
+        for i in 0..5000u32 {
+            let f = |k: u32| ((i * k) % 2560) as f32 / 10.0;
+            colors.push([f(7), f(13), f(31)]);
+        }
+        colors.extend_from_slice(&colors.clone()[..100]); // repeats
+        let cached = p.match_colors(&colors, 7);
+        assert_eq!(cached.len(), colors.len());
+        for (c, &got) in colors.iter().zip(&cached) {
+            let want = p.match_block_index(&rgb_to_lab_vec(unquantize(quantize(*c))), 7);
+            assert_eq!(got as usize, want, "{c:?}");
+        }
+    }
+
+    #[test]
+    fn quantize_round_trips_and_saturates() {
+        assert_eq!(
+            unquantize(quantize([12.4, 200.6, 255.0])),
+            [12.0, 201.0, 255.0]
+        );
+        assert_eq!(quantize([-5.0, 300.0, f32::NAN]), 0x00FF00);
+    }
+
+    #[test]
+    fn block_colors_are_available_by_name() {
+        let p = two_block_palette();
+        assert_eq!(p.block_count(), 2);
+        assert!(p.color_of("minecraft:stone").is_some());
+        assert!(p.color_of("minecraft:glass").is_none());
+    }
 
     /// Entry order must not depend on the table's `HashMap` iteration order,
     /// or ties are broken differently on every process start and the same
@@ -608,12 +725,7 @@ mod tests {
     /// scan and the KD-tree path.
     #[test]
     fn test_real_palette_matches_reference() {
-        let Ok(json) = std::fs::read_to_string("data/color_table_safe.json") else {
-            eprintln!("skipping: data/color_table_safe.json not present");
-            return;
-        };
-        let table: ColorTable = serde_json::from_str(&json).expect("parse color table");
-        let p = Palette::from_table(&table).expect("build palette");
+        let p = Palette::from_table(&crate::color_table::builtin()).expect("build palette");
 
         let (mut bright, mut dark) = (0, 0);
         for r in (0..256).step_by(3) {

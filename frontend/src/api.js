@@ -1,140 +1,182 @@
-// API client for SchemGen2 backend
+// API client for the SchemGen2 server (API v2 — see docs/api.md).
 
-import { conversionFields } from './settingsDefaults.js'
+import { toApiSettings } from './settingsDefaults.js'
 
 const BASE = '/api'
+const TOKEN_KEY = 'schemgen2.token'
 
-function appendFields(form, fields) {
-  for (const [k, v] of Object.entries(fields)) {
-    if (v !== undefined && v !== null) form.append(k, String(v))
+// A server started with --token prints a URL carrying ?token=…; take it from
+// the address bar once, keep it for this tab, and drop it from the URL so it
+// is not bookmarked or shared by accident.
+function initToken() {
+  try {
+    const url = new URL(window.location.href)
+    const fromUrl = url.searchParams.get('token')
+    if (fromUrl) {
+      sessionStorage.setItem(TOKEN_KEY, fromUrl)
+      url.searchParams.delete('token')
+      window.history.replaceState(null, '', url.toString())
+    }
+    return sessionStorage.getItem(TOKEN_KEY) || ''
+  } catch {
+    return ''
   }
 }
 
-// Where a finished schematic is copied: only when the toggle is on and a
-// folder was typed.
-function outputFields(settings) {
-  const autoSave = !!settings.auto_save
-  return {
-    output_dir: autoSave ? (settings.output_dir || '').trim() : '',
-    auto_save: autoSave ? 'true' : 'false',
-  }
+const token = typeof window === 'undefined' ? '' : initToken()
+
+function authHeaders(extra = {}) {
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra
 }
 
-async function postForm(path, form, fallbackError, signal) {
-  const res = await fetch(`${BASE}${path}`, { method: 'POST', body: form, signal })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: fallbackError }))
-    throw new Error(err.error || `HTTP ${res.status}`)
-  }
-  return res.json()
+// For URLs the browser fetches on its own (EventSource, links, <img>), which
+// cannot carry a header.
+export function withToken(url) {
+  if (!token) return url
+  return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
 }
 
-export async function uploadAndConvert(file, settings) {
-  const form = new FormData()
-  form.append('file', file)
-  appendFields(form, { ...conversionFields(settings), ...outputFields(settings) })
-  return postForm('/convert', form, 'Upload failed')
+async function request(path, { method = 'GET', body, json, signal, fallbackError } = {}) {
+  const headers = authHeaders(json !== undefined ? { 'Content-Type': 'application/json' } : {})
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    body: json !== undefined ? JSON.stringify(json) : body,
+    signal,
+  })
+  if (res.status === 204) return null
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || fallbackError || `HTTP ${res.status}`)
+  return data
 }
 
-export async function uploadAndConvertBatch(files, settings) {
+// ---- Server ----------------------------------------------------------------
+
+export const fetchHealth = () => request('/health')
+export const fetchSchema = () => request('/schema')
+export const fetchPalette = () => request('/palette')
+// Host info — notably what to call the file manager in button labels.
+export const fetchSystemInfo = () => request('/system')
+
+// ---- Jobs ------------------------------------------------------------------
+
+// Upload one or more models with shared settings. Resolves to
+// { jobs: [{ job_id, filename, name }], output_dir, … }.
+export async function startJobs(files, settings) {
   const form = new FormData()
   for (const f of files) form.append('files', f)
-  appendFields(form, {
-    ...conversionFields(settings),
-    ...outputFields(settings),
-    threads: settings.threads,
-  })
-  return postForm('/convert-batch', form, 'Batch upload failed')
+  form.append('settings', JSON.stringify(toApiSettings(settings, { withOutput: true })))
+  return request('/jobs', { method: 'POST', body: form, fallbackError: 'Upload failed' })
 }
 
-export async function pollProgress(jobId) {
-  const res = await fetch(`${BASE}/progress/${jobId}`)
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`)
+export const fetchJob = (jobId) => request(`/jobs/${jobId}`)
+export const cancelJob = (jobId) => request(`/jobs/${jobId}`, { method: 'DELETE' })
+
+const FINISHED = new Set(['done', 'error', 'cancelled'])
+
+// Follow a job until it finishes, calling onUpdate with every new state (the
+// same object GET /api/jobs/{id} returns). Uses server-sent events and falls
+// back to polling if they are unavailable. Returns a function that stops.
+export function watchJob(jobId, onUpdate) {
+  let stopped = false
+  let source = null
+  let timer = null
+
+  const deliver = (view) => {
+    if (stopped) return
+    onUpdate(view)
+    if (FINISHED.has(view.status)) stop()
   }
-  return res.json()
+
+  const poll = async () => {
+    if (stopped) return
+    try {
+      deliver(await fetchJob(jobId))
+    } catch {
+      /* transient — try again */
+    }
+    if (!stopped) timer = setTimeout(poll, 800)
+  }
+
+  const stop = () => {
+    stopped = true
+    source?.close()
+    clearTimeout(timer)
+  }
+
+  if (typeof EventSource === 'undefined') {
+    poll()
+    return stop
+  }
+  source = new EventSource(withToken(`${BASE}/jobs/${jobId}/events`))
+  for (const event of ['progress', 'done', 'error', 'cancelled']) {
+    source.addEventListener(event, (e) => {
+      try {
+        deliver(JSON.parse(e.data))
+      } catch {
+        /* ignore a malformed frame */
+      }
+    })
+  }
+  // An event stream the network (or a proxy) breaks is not worth fighting:
+  // switch to polling for the rest of this job.
+  source.onerror = () => {
+    if (stopped) return
+    source.close()
+    source = null
+    poll()
+  }
+  return stop
 }
 
-export function downloadUrl(jobId) {
-  return `${BASE}/download/${jobId}`
+export const downloadUrl = (jobId) => withToken(`${BASE}/jobs/${jobId}/download`)
+export const thumbnailUrl = (jobId) => withToken(`${BASE}/jobs/${jobId}/thumbnail.png`)
+
+// Copy an already-converted schematic into a folder (no re-conversion).
+export const saveToFolder = (jobId, path) =>
+  request(`/jobs/${jobId}/save`, { method: 'POST', json: { path } })
+
+// Show a finished schematic in the OS file manager, selected.
+export const revealJob = (jobId) => request(`/jobs/${jobId}/reveal`, { method: 'POST' })
+
+// ---- Preview ---------------------------------------------------------------
+
+// Decode the packed block list: base64 of little-endian Int32 quadruples
+// x, y, z, palette index.
+export function decodeBlocks(base64) {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Int32Array(bytes.buffer)
 }
 
-export async function fetchPalette() {
-  const res = await fetch(`${BASE}/palette`)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
-}
-
-export async function fetchHealth() {
-  const res = await fetch(`${BASE}/health`)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
-}
-
-export async function fetchLitematicPreview(file, settings, signal) {
+// Convert at preview resolution without writing a file. Resolves to the
+// server's response with `blocks` decoded into an Int32Array.
+export async function fetchPreview(file, settings, signal) {
   const form = new FormData()
   form.append('file', file)
-  appendFields(form, { ...conversionFields(settings), schematic_name: 'preview' })
-  return postForm('/preview', form, 'Preview failed', signal)
+  form.append('settings', JSON.stringify(toApiSettings(settings)))
+  const data = await request('/preview', {
+    method: 'POST',
+    body: form,
+    signal,
+    fallbackError: 'Preview failed',
+  })
+  return { ...data, blocks: decodeBlocks(data.blocks) }
 }
 
 // ---- Output folder ---------------------------------------------------------
 
-// Validate (and create) a folder path typed in the UI.
-// Resolves to { ok, path } or { ok: false, error } — a bad path is not an exception.
-export async function checkOutputDir(path) {
-  const res = await fetch(`${BASE}/output-dir/check`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
-}
+// Validate a folder path typed in the UI. Resolves to { ok, path, exists } or
+// { ok: false, error } — a bad path is not an exception.
+export const checkOutputDir = (path) =>
+  request('/output-dir/check', { method: 'POST', json: { path } })
 
 // Likely Litematica schematic folders on this machine.
 export async function fetchOutputDirSuggestions() {
-  const res = await fetch(`${BASE}/output-dir/suggestions`)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const data = await res.json()
+  const data = await request('/output-dir/suggestions')
   return data.suggestions || []
 }
 
-// Copy an already-converted schematic into a folder (no re-conversion).
-export async function saveToFolder(jobId, path) {
-  const res = await fetch(`${BASE}/save/${jobId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-  return data
-}
-
-// Show a finished schematic in the OS file manager, selected.
-export async function revealJob(jobId) {
-  const res = await fetch(`${BASE}/reveal/${jobId}`, { method: 'POST' })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-  return data
-}
-
 // Open the output folder itself in the OS file manager.
-export async function revealFolder(path) {
-  const res = await fetch(`${BASE}/reveal-folder`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-  return data
-}
-
-// Host info — notably what to call the file manager in button labels.
-export async function fetchSystemInfo() {
-  const res = await fetch(`${BASE}/system`)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
-}
+export const revealFolder = (path) => request('/reveal-folder', { method: 'POST', json: { path } })

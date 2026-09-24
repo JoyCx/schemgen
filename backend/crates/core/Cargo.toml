@@ -1,0 +1,18 @@
+[package]
+name = "schemgen-core"
+description = "SchemGen2 conversion core: voxelize, sample, dither, CIEDE2000 match, schematic writers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+flate2.workspace = true
+image.workspace = true
+kiddo.workspace = true
+log.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

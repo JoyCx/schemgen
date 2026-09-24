@@ -33,7 +33,7 @@ if needed, starts both and opens the browser.
 | | Why it only exists here |
 |---|---|
 | 3D model preview | Orbit the GLB and drag the amber handle to set the key light direction |
-| Live block preview | `/api/preview` converts at low resolution so you see block choices before committing |
+| Live block preview | `POST /api/preview` runs the pipeline without writing a file, so you see block choices before committing |
 | Preview modes | *De-lit albedo* renders exactly what the sampler will read; *Rejection mask* paints red over surface the highlight pass is discounting |
 | Palette grid | Every block the palette may choose, with its color |
 | Batch panel | Queue many models with shared settings and a thread count |
@@ -95,18 +95,29 @@ frontend/src/
 `npm run lint` (ESLint) and `npm run format` / `format:check` (Prettier) keep
 it tidy; CI runs both.
 
+## Talking to the server
+
+The UI uses API v2 ([docs/api.md](api.md)): `POST /api/jobs` with one
+`settings` JSON object, then follows each job over server-sent events
+(`GET /api/jobs/{id}/events`, falling back to polling if a proxy breaks the
+stream). `toApiSettings` in `settingsDefaults.js` turns the UI's settings into
+that object. When the server runs with `--token`, open the URL it logs
+(`…/?token=…`): the UI takes the token from the address bar, keeps it for the
+tab, and sends it with every request.
+
 ## Adding a setting
 
-A setting has to be added in three places or it is silently dropped:
+1. `backend/crates/core/src/settings.rs` — the field on `Settings`, with its
+   default, and its range in `normalized`
+2. `backend/crates/core/src/schema.rs` — its description: type, range, group,
+   label, help. A test fails until the two agree.
+3. `frontend/src/components/Settings.jsx` — the control, and
+   `frontend/src/settingsDefaults.js` — its default and its entry in
+   `toApiSettings`
 
-1. `frontend/src/components/Settings.jsx` — the control
-2. `frontend/src/settingsDefaults.js` — its default, and its multipart field in
-   `conversionFields`
-3. `backend/src/api.rs` — the `ConvertForm` / `BatchConvertForm` field, and
-   `options_from_fields`
-
-If it also belongs on the CLI, add it to `options_from_args` in
-`backend/src/cli.rs` and to the help text there.
+The HTTP API needs no change: `POST /api/jobs` accepts every field the schema
+lists. If it belongs on the CLI too, add a flag in `settings_from_args`
+(`backend/crates/cli/src/args.rs`) and to the help text there.
 
 ## Checking the shader
 

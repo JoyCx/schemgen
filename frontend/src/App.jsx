@@ -6,12 +6,11 @@ import ModelPreview from './components/ModelPreview.jsx'
 import MinecraftPreview from './components/MinecraftPreview.jsx'
 import BatchPanel from './components/BatchPanel.jsx'
 import {
-  uploadAndConvert,
-  uploadAndConvertBatch,
-  pollProgress,
+  startJobs,
+  watchJob,
   fetchPalette,
   fetchHealth,
-  fetchLitematicPreview,
+  fetchPreview,
   downloadUrl,
   saveToFolder,
   revealJob,
@@ -107,6 +106,9 @@ export default function App() {
   const statusRef = useRef(status)
   const pendingRef = useRef(false)
   const runConvertRef = useRef(null)
+  // Stops following the single-file job, and each batch job by id.
+  const stopWatchRef = useRef(null)
+  const batchWatchesRef = useRef(new Map())
   // `${job_id}|${folder as typed}` for the copy we know already happened, so the
   // re-save effect below does not repeat what the conversion just did.
   const savedForRef = useRef('')
@@ -177,39 +179,32 @@ export default function App() {
     const requestedDir = s.auto_save ? s.output_dir.trim() : ''
 
     try {
-      const { job_id } = await uploadAndConvert(f, s)
+      const { jobs } = await startJobs([f], s)
+      const job_id = jobs[0].job_id
 
       setStatus('running')
-
-      const poll = async () => {
-        try {
-          const data = await pollProgress(job_id)
-          setProgress(data.progress)
-          setMessage(data.message)
-          if (data.status === 'done') {
-            setStatus('done')
-            if (data.saved_path) savedForRef.current = `${job_id}|${requestedDir}`
-            setResult({
-              job_id,
-              download_name: data.download_name,
-              saved_path: data.saved_path || '',
-              save_error: data.save_error || '',
-            })
-            if (pendingRef.current) {
-              pendingRef.current = false
-              setTimeout(() => runConvertRef.current?.(), 50)
-            }
-          } else if (data.status === 'error') {
-            setStatus('error')
-            setError(data.message || 'Conversion failed')
-          } else {
-            setTimeout(poll, 800)
+      stopWatchRef.current?.()
+      stopWatchRef.current = watchJob(job_id, (data) => {
+        setProgress(data.progress)
+        setMessage(data.message)
+        if (data.status === 'done') {
+          setStatus('done')
+          if (data.saved_path) savedForRef.current = `${job_id}|${requestedDir}`
+          setResult({
+            job_id,
+            download_name: data.download_name,
+            saved_path: data.saved_path || '',
+            save_error: data.save_error || '',
+          })
+          if (pendingRef.current) {
+            pendingRef.current = false
+            setTimeout(() => runConvertRef.current?.(), 50)
           }
-        } catch {
-          setTimeout(poll, 2000)
+        } else if (data.status === 'error' || data.status === 'cancelled') {
+          setStatus('error')
+          setError(data.error || data.message || 'Conversion failed')
         }
-      }
-      setTimeout(poll, 500)
+      })
     } catch (e) {
       setStatus('error')
       setError(e.message || 'Upload failed')
@@ -299,7 +294,7 @@ export default function App() {
         10 * 60 * 1000,
       )
       try {
-        const data = await fetchLitematicPreview(file, settings, controller.signal)
+        const data = await fetchPreview(file, settings, controller.signal)
         clearTimeout(watchdog)
         if (!controller.signal.aborted) setLitematicPreview(data)
       } catch (e) {
@@ -338,29 +333,67 @@ export default function App() {
   ])
 
   // ---- Batch conversion -----------------------------------------------------
-  const startBatch = useCallback(async (fileList) => {
-    const s = settingsRef.current
-    try {
-      const { jobs } = await uploadAndConvertBatch(fileList, s)
-      setBatchJobs(
-        jobs.map((j) => ({
-          key: j.job_id,
-          job_id: j.job_id,
-          filename: j.filename,
-          status: 'queued',
-          progress: 0,
-          message: 'Queued…',
-          download_name: '',
-          saved_path: '',
-          save_error: '',
-        })),
-      )
-      setError('')
-    } catch (e) {
-      setError(e.message || 'Batch upload failed')
-      setBatchJobs([])
-    }
+  const stopBatchWatches = useCallback(() => {
+    for (const stop of batchWatchesRef.current.values()) stop()
+    batchWatchesRef.current.clear()
   }, [])
+
+  const startBatch = useCallback(
+    async (fileList) => {
+      const s = settingsRef.current
+      stopBatchWatches()
+      try {
+        const { jobs } = await startJobs(fileList, s)
+        setBatchJobs(
+          jobs.map((j) => ({
+            key: j.job_id,
+            job_id: j.job_id,
+            filename: j.filename,
+            status: 'queued',
+            progress: 0,
+            message: 'Queued…',
+            download_name: '',
+            saved_path: '',
+            save_error: '',
+          })),
+        )
+        setError('')
+        for (const j of jobs) {
+          const stop = watchJob(j.job_id, (u) => {
+            setBatchJobs((prev) =>
+              prev.map((b) =>
+                b.job_id === u.id
+                  ? {
+                      ...b,
+                      status: u.status,
+                      progress: u.progress,
+                      message: u.error || u.message,
+                      download_name: u.download_name,
+                      saved_path: u.saved_path || '',
+                      save_error: u.save_error || '',
+                    }
+                  : b,
+              ),
+            )
+          })
+          batchWatchesRef.current.set(j.job_id, stop)
+        }
+      } catch (e) {
+        setError(e.message || 'Batch upload failed')
+        setBatchJobs([])
+      }
+    },
+    [stopBatchWatches],
+  )
+
+  // Stop following every job when the page goes away.
+  useEffect(
+    () => () => {
+      stopWatchRef.current?.()
+      stopBatchWatches()
+    },
+    [stopBatchWatches],
+  )
 
   // Start/clear batch when the number of files crosses the multi-file boundary.
   useEffect(() => {
@@ -369,46 +402,10 @@ export default function App() {
       setStatus('idle')
       startBatch(files)
     } else {
+      stopBatchWatches()
       setBatchJobs([])
     }
   }, [files]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Poll all active batch jobs together.
-  useEffect(() => {
-    if (!batchJobs.length) return
-    const active = batchJobs.filter((j) => j.status === 'queued' || j.status === 'running')
-    if (!active.length) return
-
-    const t = setTimeout(async () => {
-      const updates = await Promise.all(
-        active.map(async (j) => {
-          try {
-            return await pollProgress(j.job_id)
-          } catch {
-            return null
-          }
-        }),
-      )
-      setBatchJobs((prev) =>
-        prev.map((j) => {
-          const idx = active.findIndex((a) => a.key === j.key)
-          if (idx === -1) return j
-          const u = updates[idx]
-          if (!u) return j
-          return {
-            ...j,
-            status: u.status,
-            progress: u.progress,
-            message: u.message,
-            download_name: u.download_name,
-            saved_path: u.saved_path || '',
-            save_error: u.save_error || '',
-          }
-        }),
-      )
-    }, 800)
-    return () => clearTimeout(t)
-  }, [batchJobs])
 
   // Copy every finished batch job into the chosen folder (no re-conversion).
   const saveBatchToFolder = useCallback(async () => {
@@ -440,12 +437,13 @@ export default function App() {
     if (files.length > 1) startBatch(files)
   }, [files, startBatch])
   const clearAll = useCallback(() => {
+    stopBatchWatches()
     setFiles([])
     setBatchJobs([])
     setResult(null)
     setStatus('idle')
     setError('')
-  }, [])
+  }, [stopBatchWatches])
 
   const converting = status === 'uploading' || status === 'running'
   const batchRunning =

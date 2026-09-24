@@ -24,15 +24,15 @@ multi-version support, and
                         └──────────────────────────────┘
 ```
 
-Both produce the same file for the same settings: the CLI runs the pipeline
+Both produce the same blocks for the same settings: the CLI runs the pipeline
 in-process, the web app posts to the server, and they meet in the same
-`convert()`.
+`pipeline::run`.
 
 ## Prerequisites
 
 | | Version | Needed for |
 |---|---|---|
-| **Rust** | 1.80+ | the converter itself — CLI and server |
+| **Rust** | 1.88+ | the converter itself — CLI and server |
 | **Python** | 3.10+ with `trimesh[easy] numpy scipy Pillow` | mesh voxelization and color sampling |
 | **Node** | 22+ | building the web UI only — the CLI does not need it |
 
@@ -100,20 +100,20 @@ de-lit albedo view, the highlight-rejection mask, the palette grid, a batch
 queue, and a folder picker that finds the `schematics` folders of your
 CurseForge / Prism / MultiMC / Modrinth instances. See [docs/web.md](docs/web.md).
 
-> The server has no authentication and no CORS handling — it is meant to run on
-> the same machine as its browser. Do not expose it to a network you do not
-> control: `/api/reveal-folder` opens a file manager on the host, and the
-> output folder writes files where it is told.
+> The server is meant for the machine it runs on: it binds `127.0.0.1`, answers
+> only requests addressed to `localhost`, and refuses browser requests from
+> other sites. `--token` additionally requires a bearer token on every API
+> call. Exposing it with `--host` is possible but not what it is for — see
+> [docs/api.md](docs/api.md#authentication-and-exposure).
 
 ## Loading the result
 
-The output is a Litematica `.litematic`, stamped `MinecraftDataVersion` 4440
-(1.21.8) by default so it loads in 1.21.8 and every version after it. Put it in
-your instance's `schematics/` folder — or point `-d` there directly — and load
-it with the [Litematica](https://github.com/maruohon/litematica) mod. Use
-`--data-version` to stamp a different version; see
-[docs/pipeline.md](docs/pipeline.md) for why the stamp must not be older than
-the newest block in the palette.
+The output is a Litematica `.litematic` made for Minecraft 1.21.8 by default,
+so it loads in 1.21.8 and every version after it. Put it in your instance's
+`schematics/` folder — or point `-d` there directly — and load it with the
+[Litematica](https://github.com/maruohon/litematica) mod. For another version,
+pass `--target` (`schemgen2 targets` lists them, from 1.16.5 to 26.3); see
+[docs/versions.md](docs/versions.md).
 
 ## How it works
 
@@ -137,24 +137,25 @@ in [docs/pipeline.md](docs/pipeline.md):
 
 ```
 schemgen2/
-├── backend/                 Rust — the converter, the CLI and the HTTP server
-│   ├── src/
-│   │   ├── main.rs          Command dispatch, palette loading, static serving
-│   │   ├── cli.rs           `convert` / `palette` command line
-│   │   ├── api.rs           HTTP routes and job lifecycle
-│   │   ├── converter.rs     Pipeline orchestrator
-│   │   ├── voxelizer.rs     Drives the Python subprocess
-│   │   ├── palette.rs       CIELAB, CIEDE2000, KD-tree matching
-│   │   ├── color_table.rs   Build color tables from a texture pack
-│   │   ├── blocks.rs        Anti-grief whitelist + copper remapping
-│   │   ├── savedir.rs       Output-folder resolve / create / deliver / reveal
-│   │   ├── dithering.rs     8×8 Bayer ordered dithering
-│   │   ├── litematic.rs     Raw NBT .litematic writer
-│   │   └── types.rs         Shared types
+├── backend/                 Rust workspace — the converter, the CLI and the server
+│   ├── crates/
+│   │   ├── core/            schemgen-core: no I/O policy, no HTTP
+│   │   │   ├── settings.rs  Every setting, its default and range
+│   │   │   ├── schema.rs    The settings schema UIs render from
+│   │   │   ├── pipeline.rs  voxelize → adjust → dither → match → BlockGrid
+│   │   │   ├── voxelizer/   Drives the Python subprocess
+│   │   │   ├── palette.rs   CIELAB, CIEDE2000, KD-tree matching
+│   │   │   ├── targets.rs   Minecraft versions and their data versions
+│   │   │   ├── formats/     NBT writer/reader, .litematic
+│   │   │   ├── thumbnail.rs Isometric preview image
+│   │   │   └── …            dithering, color tables, anti-grief list
+│   │   ├── server/          schemgen-server: API v2 + v1, jobs, events, auth
+│   │   └── cli/             schemgen2: the binary — convert, serve, …
 │   ├── scripts/             Python: voxelize.py, sample_colors.py + its tests
+│   ├── fixtures/            Small test models (tools/make_fixtures.py)
 │   └── data/                color_table_safe.json — the curated palette
 ├── frontend/                Vite React web app
-└── docs/                    cli · api · web · pipeline
+└── docs/                    cli · api · web · pipeline · versions · roadmap
 ```
 
 ## Rebuilding the color table
@@ -176,8 +177,8 @@ light and only the curated anti-grief blocks are kept.
 ## Testing
 
 ```bash
-cd backend && cargo test --release                    # 29 passed
-cd backend/scripts && python test_sample_colors.py    # 23/23 passed
+cd backend && cargo test                              # core, server and CLI
+cd backend/scripts && python test_sample_colors.py    # the color sampler
 cd frontend && npm run lint && npm run build          # lint + production build
 ```
 
@@ -186,8 +187,10 @@ Linux and Windows, plus `cargo fmt --check`, `cargo clippy -D warnings` and
 `prettier --check`.
 
 The Rust tests cover the CIEDE2000 implementation against reference values, the
-KD-tree's pruning against a linear scan, the NBT writer, and output-folder
-resolution. The Python tests cover the color sampler and the de-lighting model.
+KD-tree's pruning and the match cache against linear scans, the NBT writer and
+reader, the settings schema, and every API route. The server tests that run
+real conversions need the Python voxelizer (`SCHEMGEN_PYTHON` picks the
+interpreter) and say so when they skip. The Python tests cover the color sampler and the de-lighting model.
 The web preview's GLSL mirror of that model has no assertion to make, so it is
 checked by compiling it against a real WebGL context — run the dev server and
 open `/shader-check.html`.

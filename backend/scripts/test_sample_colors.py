@@ -375,6 +375,21 @@ def _():
     assert np.allclose(lighting_options(light_dir=[0, 0, 0])["light_dir"], DEFAULT_LIGHT_DIR)
 
 
+# ── Voxelization ─────────────────────────────────────────────────────────────
+
+
+@check("voxelized longest axis is exactly max_size blocks")
+def _():
+    from voxelize import voxelize_surface
+    for extents, max_size in [((2.0, 1.0, 0.5), 24), ((1.0, 3.0, 1.0), 17), ((1.0, 1.0, 1.0), 8)]:
+        box = trimesh.creation.box(extents=extents)
+        voxel_size = max(box.bounding_box.extents) / max_size
+        coords, _, dims, _ = voxelize_surface(box, voxel_size)
+        size = coords.max(axis=0) + 1
+        assert size.max() == max_size, (extents, max_size, size)
+        assert tuple(size) == tuple(dims), (size, dims)
+
+
 def main():
     import io, contextlib
     failures = 0

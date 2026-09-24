@@ -188,6 +188,9 @@ pub fn dedupe_filename(filename: &str, taken: &mut HashSet<String>) -> String {
 
 /// Copy a finished schematic into the chosen folder, overwriting a previous
 /// file of the same name. Returns the full destination path.
+///
+/// The copy lands under a temporary name and is renamed into place, so
+/// Litematica, which watches its schematics folder, never lists half a file.
 pub fn deliver(src: &Path, dir: &Path, filename: &str) -> Result<PathBuf, String> {
     if !src.exists() {
         return Err(format!("Schematic \"{}\" is missing", src.display()));
@@ -196,8 +199,13 @@ pub fn deliver(src: &Path, dir: &Path, filename: &str) -> Result<PathBuf, String
         .map_err(|e| format!("Could not create \"{}\": {e}", dir.display()))?;
 
     let dest = dir.join(filename);
-    std::fs::copy(src, &dest)
-        .map_err(|e| format!("Could not write \"{}\": {e}", dest.display()))?;
+    let tmp = schemgen_core::formats::temp_path(&dest);
+    std::fs::copy(src, &tmp)
+        .and_then(|_| std::fs::rename(&tmp, &dest))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("Could not write \"{}\": {e}", dest.display())
+        })?;
     Ok(dest)
 }
 
