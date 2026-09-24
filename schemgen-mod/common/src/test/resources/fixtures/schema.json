@@ -1,0 +1,505 @@
+{
+  "default_target": "1.21.8",
+  "fields": [
+    {
+      "default": 128,
+      "group": "size",
+      "help": "Length of the longest side of the result, in blocks.",
+      "key": "max_size",
+      "label": "Max size",
+      "max": 2048.0,
+      "min": 1.0,
+      "scope": "conversion",
+      "slider": [
+        8.0,
+        512.0
+      ],
+      "step": 1.0,
+      "type": "int",
+      "unit": "blocks"
+    },
+    {
+      "advanced": true,
+      "default": null,
+      "group": "size",
+      "help": "Size of one block in the model's own units. Overrides max size when set.",
+      "key": "voxel_size",
+      "label": "Voxel size",
+      "min": 0.0,
+      "nullable": true,
+      "placeholder": "Auto",
+      "scope": "conversion",
+      "type": "float"
+    },
+    {
+      "default": true,
+      "group": "color",
+      "help": "Match every block to the model's surface color. Off places one block everywhere.",
+      "key": "color_sampling",
+      "label": "Color sampling",
+      "scope": "conversion",
+      "type": "bool"
+    },
+    {
+      "default": true,
+      "group": "color",
+      "help": "8×8 ordered dithering, so large flat areas do not band into a single block.",
+      "key": "dither",
+      "label": "Dithering",
+      "scope": "conversion",
+      "type": "bool",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": 0.0,
+      "group": "color",
+      "help": "Added to every color before matching.",
+      "key": "brightness",
+      "label": "Brightness",
+      "max": 1.0,
+      "min": -1.0,
+      "scope": "conversion",
+      "slider": [
+        -0.5,
+        0.5
+      ],
+      "step": 0.01,
+      "type": "float",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": 1.0,
+      "group": "color",
+      "help": "Spreads colors away from mid-grey before matching.",
+      "key": "contrast",
+      "label": "Contrast",
+      "max": 3.0,
+      "min": 0.0,
+      "scope": "conversion",
+      "slider": [
+        0.5,
+        2.0
+      ],
+      "step": 0.01,
+      "type": "float",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": 1.0,
+      "group": "color",
+      "help": "0 matches in greyscale; above 1 exaggerates color.",
+      "key": "saturation",
+      "label": "Saturation",
+      "max": 3.0,
+      "min": 0.0,
+      "scope": "conversion",
+      "slider": [
+        0.0,
+        2.0
+      ],
+      "step": 0.01,
+      "type": "float",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "choices": [
+        {
+          "label": "White concrete",
+          "value": "minecraft:white_concrete"
+        },
+        {
+          "label": "Netherrack",
+          "value": "minecraft:netherrack"
+        }
+      ],
+      "default": "minecraft:white_concrete",
+      "group": "color",
+      "help": "The block used everywhere when color sampling is off.",
+      "key": "default_block",
+      "label": "Block",
+      "scope": "conversion",
+      "type": "block",
+      "when": {
+        "equals": false,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": [
+        0.3499999940395355,
+        0.8500000238418579,
+        0.4000000059604645
+      ],
+      "group": "lighting",
+      "help": "Where the light baked into the texture came from, in model space.",
+      "key": "light_dir",
+      "label": "Key light",
+      "scope": "conversion",
+      "type": "direction",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": 0.0,
+      "group": "lighting",
+      "help": "Removes the assumed lighting from the texture: the highlight is subtracted, the shading divided out. 0 is off.",
+      "key": "delight",
+      "label": "De-light",
+      "max": 1.0,
+      "min": 0.0,
+      "scope": "conversion",
+      "step": 0.01,
+      "type": "float",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": 0.5,
+      "group": "lighting",
+      "help": "How sharp a highlight to assume was baked in. 0 assumes none.",
+      "key": "light_gloss",
+      "label": "Assumed gloss",
+      "max": 1.0,
+      "min": 0.0,
+      "scope": "conversion",
+      "step": 0.01,
+      "type": "float",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": 0.3199999928474426,
+      "group": "lighting",
+      "help": "Light still reaching surfaces that face away from the key light.",
+      "key": "light_ambient",
+      "label": "Ambient",
+      "max": 1.0,
+      "min": 0.0,
+      "scope": "conversion",
+      "step": 0.01,
+      "type": "float",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": 1.100000023841858,
+      "group": "lighting",
+      "help": "Strength of the assumed highlight.",
+      "key": "specular",
+      "label": "Specular gain",
+      "max": 4.0,
+      "min": 0.0,
+      "scope": "conversion",
+      "slider": [
+        0.0,
+        2.0
+      ],
+      "step": 0.01,
+      "type": "float",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": 0.75,
+      "group": "lighting",
+      "help": "Discounts samples inside the highlight when averaging a block, so a shiny surface keeps its own color.",
+      "key": "highlight_rejection",
+      "label": "Highlight rejection",
+      "max": 1.0,
+      "min": 0.0,
+      "scope": "conversion",
+      "step": 0.01,
+      "type": "float",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "default": 1.0,
+      "group": "lighting",
+      "help": "Rebuilds blocks that were entirely highlight from the rest of their material.",
+      "key": "highlight_recovery",
+      "label": "Blown-voxel recovery",
+      "max": 1.0,
+      "min": 0.0,
+      "scope": "conversion",
+      "step": 0.01,
+      "type": "float",
+      "when": {
+        "equals": true,
+        "field": "color_sampling"
+      }
+    },
+    {
+      "choices": [
+        {
+          "label": "26.3",
+          "value": "26.3"
+        },
+        {
+          "label": "26.2",
+          "value": "26.2"
+        },
+        {
+          "label": "26.1",
+          "value": "26.1"
+        },
+        {
+          "label": "1.21.11",
+          "value": "1.21.11"
+        },
+        {
+          "label": "1.21.10",
+          "value": "1.21.10"
+        },
+        {
+          "label": "1.21.8",
+          "value": "1.21.8"
+        },
+        {
+          "label": "1.21.5",
+          "value": "1.21.5"
+        },
+        {
+          "label": "1.21.4",
+          "value": "1.21.4"
+        },
+        {
+          "label": "1.21.1",
+          "value": "1.21.1"
+        },
+        {
+          "label": "1.20.6",
+          "value": "1.20.6"
+        },
+        {
+          "label": "1.20.4",
+          "value": "1.20.4"
+        },
+        {
+          "label": "1.20.1",
+          "value": "1.20.1"
+        },
+        {
+          "label": "1.19.4",
+          "value": "1.19.4"
+        },
+        {
+          "label": "1.18.2",
+          "value": "1.18.2"
+        },
+        {
+          "label": "1.17.1",
+          "value": "1.17.1"
+        },
+        {
+          "label": "1.16.5",
+          "value": "1.16.5"
+        }
+      ],
+      "default": "1.21.8",
+      "group": "target",
+      "help": "The game version the schematic is for: it is stamped into the file, and only blocks that exist in that version are used.",
+      "key": "target",
+      "label": "Minecraft version",
+      "scope": "conversion",
+      "type": "choice"
+    },
+    {
+      "default": "",
+      "group": "output",
+      "help": "Name stored in the schematic and used for its file. Empty uses the model's file name.",
+      "key": "schematic_name",
+      "label": "Schematic name",
+      "placeholder": "Model file name",
+      "scope": "conversion",
+      "type": "text"
+    },
+    {
+      "default": null,
+      "group": "output",
+      "help": "Also copy each finished schematic into this folder, typically a schematics folder. ~ and %APPDATA% expand; the folder is created if missing.",
+      "key": "output_dir",
+      "label": "Save into folder",
+      "nullable": true,
+      "placeholder": "Only keep it on the server",
+      "scope": "job",
+      "type": "folder"
+    },
+    {
+      "advanced": true,
+      "default": 4,
+      "group": "advanced",
+      "help": "How many files of one batch convert at the same time.",
+      "key": "threads",
+      "label": "Parallel conversions",
+      "max": 64.0,
+      "min": 1.0,
+      "scope": "job",
+      "step": 1.0,
+      "type": "int"
+    },
+    {
+      "advanced": true,
+      "default": 4.0,
+      "group": "advanced",
+      "help": "Upper bound on the memory color sampling may use.",
+      "key": "ram_limit",
+      "label": "Memory budget",
+      "max": 256.0,
+      "min": 0.5,
+      "scope": "conversion",
+      "slider": [
+        0.5,
+        32.0
+      ],
+      "step": 0.5,
+      "type": "float",
+      "unit": "GB"
+    }
+  ],
+  "formats": [
+    "litematic"
+  ],
+  "groups": [
+    {
+      "key": "size",
+      "label": "Size & shape"
+    },
+    {
+      "key": "color",
+      "label": "Color"
+    },
+    {
+      "help": "Separates lighting baked into the model's textures from its real colors. Leave it alone unless the model looks shiny or shaded in its texture.",
+      "key": "lighting",
+      "label": "Lighting"
+    },
+    {
+      "help": "The Minecraft version the schematic is for. Only blocks that exist in that version are used.",
+      "key": "target",
+      "label": "Target version"
+    },
+    {
+      "key": "output",
+      "label": "Output"
+    },
+    {
+      "key": "advanced",
+      "label": "Advanced"
+    }
+  ],
+  "limits": {
+    "max_upload_bytes": 1073741824
+  },
+  "palette": {
+    "blocks": 181,
+    "entries": 181
+  },
+  "targets": [
+    {
+      "data_version": 5023,
+      "id": "26.3",
+      "schematic_version": 7
+    },
+    {
+      "data_version": 4903,
+      "id": "26.2",
+      "schematic_version": 7
+    },
+    {
+      "data_version": 4786,
+      "id": "26.1",
+      "schematic_version": 7
+    },
+    {
+      "data_version": 4671,
+      "id": "1.21.11",
+      "schematic_version": 7
+    },
+    {
+      "data_version": 4556,
+      "id": "1.21.10",
+      "schematic_version": 7
+    },
+    {
+      "data_version": 4440,
+      "id": "1.21.8",
+      "schematic_version": 7
+    },
+    {
+      "data_version": 4325,
+      "id": "1.21.5",
+      "schematic_version": 7
+    },
+    {
+      "data_version": 4189,
+      "id": "1.21.4",
+      "schematic_version": 7
+    },
+    {
+      "data_version": 3955,
+      "id": "1.21.1",
+      "schematic_version": 7
+    },
+    {
+      "data_version": 3839,
+      "id": "1.20.6",
+      "schematic_version": 6
+    },
+    {
+      "data_version": 3700,
+      "id": "1.20.4",
+      "schematic_version": 6
+    },
+    {
+      "data_version": 3465,
+      "id": "1.20.1",
+      "schematic_version": 6
+    },
+    {
+      "data_version": 3337,
+      "id": "1.19.4",
+      "schematic_version": 6
+    },
+    {
+      "data_version": 2975,
+      "id": "1.18.2",
+      "schematic_version": 6
+    },
+    {
+      "data_version": 2730,
+      "id": "1.17.1",
+      "schematic_version": 6
+    },
+    {
+      "data_version": 2586,
+      "id": "1.16.5",
+      "schematic_version": 6
+    }
+  ],
+  "version": "2.0.0"
+}
