@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "schemgen",
+  "version": "${version}",
+  "name": "SchemGen2",
+  "description": "Convert GLB/glTF models into Litematica schematics from inside Minecraft. A client-only front end for the SchemGen2 HTTP API: it uploads a model, shows progress, and drops the finished .litematic into this instance's schematics folder.",
+  "authors": [
+    "SchemGen2"
+  ],
+  "contact": {
+    "sources": "https://github.com/JoyCx/glb2litematic"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.schemgen.mod.SchemGenMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "litematica": "*"
+  }
+}

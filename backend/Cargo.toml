@@ -3,8 +3,6 @@ name = "schemgen2"
 version = "2.0.0"
 edition = "2021"
 description = "GLB to Litematica converter — Rust backend with CIEDE2000 perceptual color matching"
-license-file = "../LICENSE"
-publish = false
 
 [dependencies]
 actix-web = "4"

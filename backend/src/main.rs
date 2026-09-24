@@ -1,9 +1,10 @@
 //! SchemGen2 — GLB → Litematica converter.
 //!
-//! One binary, two front doors onto the same pipeline
+//! One binary, three front doors onto the same pipeline
 //! (voxelize → color sample → dither → CIEDE2000 block match → litematic):
 //!
-//! * `schemgen2 serve` — HTTP API + the Vite React web UI
+//! * `schemgen2 serve` — HTTP API + the Vite React web UI (also what the
+//!   Fabric mod in `mod/` talks to)
 //! * `schemgen2 convert` — headless CLI conversion
 //! * `schemgen2 palette` / `build-table` — palette inspection and rebuilding
 //!

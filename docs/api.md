@@ -1,7 +1,8 @@
 # HTTP API
 
 Started with `schemgen2 serve` (port 3001 by default, `--port` or `PORT` to
-change it). The web app is a client of this API and has no other way in.
+change it). The web UI and the Fabric mod are both clients of this API and have
+no other way in.
 
 ```bash
 cd backend && cargo run --release -- serve
@@ -109,8 +110,10 @@ itself stays in `backend/outputs/`).
 ## Writing another client
 
 A conversion is four calls: `health` → `convert` → `progress` until it finishes
-→ `download`. That is all the web app does, and it is all any other client
-needs to do — the upload is an ordinary `multipart/form-data` POST.
+→ `download`. The Fabric mod is exactly that, in about 200 lines of
+`java.net.http` — see
+[`mod/src/main/java/com/schemgen/mod/ApiClient.java`](../mod/src/main/java/com/schemgen/mod/ApiClient.java)
+for a worked example, including the hand-built multipart body.
 
 There is no authentication and no CORS handling: the server is meant to run on
 the same machine as its clients. Do not expose it to a network you do not

@@ -286,7 +286,7 @@ async fn finish_job(
 
 /// Mirror pipeline events into the shared job, so `/api/progress` reports the
 /// real stage instead of sitting at "Starting..." until the job is finished.
-/// The web UI's progress panel polls that route.
+/// Both the web UI's progress panel and the Fabric mod poll that route.
 ///
 /// The percentage stops at 99 while the job runs: `finish_job` owns the step to
 /// 100, and only takes it once the file is written and delivered. Events that
@@ -755,9 +755,9 @@ async fn reveal_folder_handler(body: web::Json<OutputDirRequest>) -> HttpRespons
     }
 }
 
-/// Cheap liveness probe. A client pings this before offering to convert, so a
-/// stopped server is reported up front instead of surfacing as a failed upload
-/// minutes later.
+/// Cheap liveness probe. The Fabric mod pings this before offering to convert,
+/// so a stopped server is reported in the GUI instead of surfacing as a failed
+/// upload minutes later.
 #[get("/api/health")]
 async fn health_handler(state: web::Data<Arc<AppState>>) -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({

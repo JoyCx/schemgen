@@ -1,8 +1,9 @@
 # The conversion pipeline
 
-Everything below is shared by both front ends. The CLI and the HTTP API end up
-in the same `convert()` with the same defaults, so a given model and settings
-produce the same file whichever door you came in through.
+Everything below is shared by all three front ends. The CLI, the HTTP API and
+the Fabric mod all end up in the same `convert()` with the same defaults, so a
+given model and settings produce the same file whichever door you came in
+through.
 
 ```
 GLB/glTF
@@ -119,7 +120,8 @@ The stamp must stay **at or above** the newest block in the palette —
 `chiseled_resin_bricks`, added in 1.21.4 — because declaring an older version
 makes Minecraft's DataFixerUpper try to upgrade block names that did not exist
 yet. Litematica reads schematics stamped *below* the running game, so the
-default loads fine in 1.21.8 and everything after it.
+default loads fine in 1.21.8 and everything after it, including the 1.21.11 the
+Fabric mod targets.
 
 To read the value out of a schematic Litematica itself saved:
 
