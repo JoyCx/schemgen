@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 
@@ -45,10 +46,13 @@ public final class ModConfig {
      */
     public String pythonPath = "";
 
-    /** Where finished schematics go; blank is the instance's {@code schematics} folder. */
+    /**
+     * Where finished schematics go; blank is the instance's {@code schematics}
+     * folder, a relative path is relative to the game directory.
+     */
     public String outputFolder = "";
 
-    /** The folder the model list shows; blank is {@code <game dir>/schemgen/models}. */
+    /** The folder the model list shows; blank is {@code <game dir>/schemgen/models}, relative as above. */
     public String modelsFolder = "";
 
     /** A target version to convert for instead of the running game's; blank follows the game. */
@@ -97,18 +101,18 @@ public final class ModConfig {
         AtomicFiles.writeString(file, Json.PRETTY.toJson(sanitized()) + "\n");
     }
 
-    /** This config with nulls and out-of-range numbers replaced by defaults. */
+    /** This config with nulls, out-of-range numbers and unusable hosts and paths replaced by defaults. */
     public ModConfig sanitized() {
         ModConfig defaults = new ModConfig();
         ModConfig out = new ModConfig();
         out.serverMode = serverMode == null ? defaults.serverMode : serverMode;
-        out.host = orDefault(host, defaults.host);
+        out.host = isValidHost(orDefault(host, defaults.host)) ? orDefault(host, defaults.host) : defaults.host;
         out.port = port >= 1 && port <= 65535 ? port : defaults.port;
         out.token = orDefault(token, "");
-        out.binaryPath = orDefault(binaryPath, "");
+        out.binaryPath = pathOrBlank(binaryPath);
         out.pythonPath = orDefault(pythonPath, "");
-        out.outputFolder = orDefault(outputFolder, "");
-        out.modelsFolder = orDefault(modelsFolder, "");
+        out.outputFolder = pathOrBlank(outputFolder);
+        out.modelsFolder = pathOrBlank(modelsFolder);
         out.targetOverride = orDefault(targetOverride, "");
         out.lastSettings = lastSettings == null ? new JsonObject() : lastSettings.deepCopy();
         out.autoLoadIntoLitematica = autoLoadIntoLitematica;
@@ -117,20 +121,44 @@ public final class ModConfig {
     }
 
     public Path outputFolder(Path gameDir) {
-        return outputFolder.isBlank() ? gameDir.resolve("schematics") : Path.of(outputFolder.strip());
+        return outputFolder.isBlank() ? gameDir.resolve("schematics") : gameDir.resolve(outputFolder.strip());
     }
 
     public Path modelsFolder(Path gameDir) {
-        return modelsFolder.isBlank() ? gameDir.resolve("schemgen").resolve("models") : Path.of(modelsFolder.strip());
+        return modelsFolder.isBlank() ? gameDir.resolve("schemgen").resolve("models") : gameDir.resolve(modelsFolder.strip());
     }
 
     /** External mode's server address. */
     public URI externalUri() {
+        return uri(host, port);
+    }
+
+    /** Whether {@code host} is something to connect to: a host name, or an IPv4 or IPv6 address. */
+    public static boolean isValidHost(String host) {
+        try {
+            return uri(host, DEFAULT_PORT).getHost() != null;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private static URI uri(String host, int port) {
         String name = host.strip();
         if (name.contains(":") && !name.startsWith("[")) {
             name = "[" + name + "]"; // an IPv6 literal
         }
         return URI.create("http://" + name + ":" + port);
+    }
+
+    /** A path this system can use, else blank — the default — rather than an error wherever it is used. */
+    private static String pathOrBlank(String value) {
+        String path = orDefault(value, "");
+        try {
+            Path.of(path);
+            return path;
+        } catch (InvalidPathException e) {
+            return "";
+        }
     }
 
     private static String orDefault(String value, String fallback) {

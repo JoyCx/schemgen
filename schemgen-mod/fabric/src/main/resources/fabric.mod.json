@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "schemgen",
+  "version": "${version}",
+  "name": "SchemGen",
+  "description": "Turn glTF/GLB models into Litematica schematics without leaving the game. Runs the SchemGen2 converter in the background, previews the result in the world and hands it to Litematica.",
+  "authors": ["JoyCx"],
+  "contact": {
+    "sources": "https://github.com/JoyCx/schemgen",
+    "issues": "https://github.com/JoyCx/schemgen/issues"
+  },
+  "license": "LicenseRef-SchemGen2-Personal-Non-Commercial",
+  "icon": "assets/schemgen/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["io.github.joycx.schemgen.SchemGenClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "${minecraft}",
+    "java": ">=21"
+  },
+  "suggests": {
+    "litematica": "*"
+  }
+}

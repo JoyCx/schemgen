@@ -51,6 +51,11 @@ class ModConfigTest {
         assertEquals(URI.create("http://192.168.1.20:4000"), back.externalUri());
         assertEquals("abc", back.token);
         assertEquals(Path.of("/srv/schematics"), back.outputFolder(dir));
+        back.modelsFolder = "models/mine";
+        assertEquals(dir.resolve("models/mine"), back.modelsFolder(dir), "relative to the game directory");
+
+        back.outputFolder = "no\u0000such path"; // a NUL is not allowed in a path anywhere
+        assertEquals(dir.resolve("schematics"), back.sanitized().outputFolder(dir), "an unusable folder is the default");
         assertEquals(96, back.lastSettings.get("max_size").getAsInt());
         assertTrue(Files.readString(file).contains("\n  \"serverMode\": \"EXTERNAL\""), "readable JSON");
     }
@@ -85,5 +90,19 @@ class ModConfigTest {
         ModConfig config = new ModConfig();
         config.host = "::1";
         assertEquals(URI.create("http://[::1]:3001"), config.externalUri());
+    }
+
+    @Test
+    void hostsThatCannotBeConnectedToAreReplaced() {
+        assertTrue(ModConfig.isValidHost("my-pc.local"));
+        assertTrue(ModConfig.isValidHost("192.168.1.20"));
+        assertTrue(ModConfig.isValidHost("[::1]"));
+        assertFalse(ModConfig.isValidHost("my pc"));
+        assertFalse(ModConfig.isValidHost("under_score"));
+        assertFalse(ModConfig.isValidHost("http://my-pc"));
+
+        ModConfig config = new ModConfig();
+        config.host = "my pc";
+        assertEquals("127.0.0.1", config.sanitized().host);
     }
 }
