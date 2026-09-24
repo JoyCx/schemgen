@@ -246,9 +246,11 @@ for every version, and uploads the jars as artifacts.
 Shared: Fabric Loader 0.18.4 to build against (the jar asks for 0.16 or
 later), Loom 1.13.6 (the newest line on Gradle 8), Stonecutter 0.7.11 (0.8 and
 later need Gradle 9). Litematica and MaLiLib are compile-only: the mod never
-needs them at run time. Their versions must be ones published on Modrinth,
-whose Maven the build resolves them from — not every tagged build is (1.21.8
-has 0.23.4 but no 0.23.3, 1.21.11 has 0.26.3 but no 0.26.6).
+needs them at run time. They come from Modrinth's Maven, which knows only the
+builds published on Modrinth (1.21.8 has 0.23.4 but no 0.23.3, 1.21.11 has
+0.26.3 but no 0.26.6) and does not resolve every build's version number: for
+1.21.8 and 1.21.11 the properties name Modrinth's version IDs instead, with the
+build they stand for in a comment.
 
 [Stonecutter](https://stonecutter.kikugie.dev/) builds each version from one
 `fabric/src`, which is written for the **active** version, 1.21.8. Code for
